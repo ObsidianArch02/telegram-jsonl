@@ -5,7 +5,7 @@ latest explicit instructions when they change a preference in this file.
 
 ## Collaboration
 
-- Communicate with the maintainer in concise Chinese; use English for code,
+- Communicate with the maintainer concisely in the language appropriate to the user's context; use English for code,
   commit messages, CLI messages, and the default documentation.
 - Read the relevant code before changing it. Complete implementation and
   appropriate verification without repeatedly asking for routine decisions.

@@ -82,6 +82,9 @@ History uses ordinary authorized requests, not a Takeout session. Consider
 [Telegram Desktop export](https://telegram.org/blog/export-and-more) or a separate
 [Takeout API](https://core.telegram.org/api/takeout) implementation for large one-time exports.
 
-Local automated tests use simulated inputs. Real-account login, built-in application
-identity acceptance, network reconnection, and server update recovery remain unverified.
+Local automated tests use simulated inputs. A separate unauthenticated live probe
+confirmed that Telegram accepted the configured application credentials for
+`auth.exportLoginToken`; it did not log in to an account or access messages.
+End-to-end real-account login, archiving, and downloading with the SQLite workflow,
+network reconnection, and server update recovery remain unverified.
 Review [security guidance](../SECURITY.md) and the [disclaimer](../DISCLAIMER.md).

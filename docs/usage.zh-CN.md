@@ -68,7 +68,8 @@ set -gx TG_API_HASH 'YOUR_APP_HASH'
 ./telegram-jsonl archive --client native --data ./data-native --login
 ```
 
-不要将凭证放进源码、Issue、终端录屏或提交。
+贡献者个人的凭证应使用私密环境变量配置，不要放进源码、Issue、终端录屏或提交。
+修改项目默认应用身份需维护者明确授权，任何公开上传前都应审查源码和 Git 历史中的凭证。
 
 | 归档参数 | 默认值 | 含义 |
 | --- | --- | --- |
@@ -173,9 +174,13 @@ set -gx TG_API_HASH 'YOUR_APP_HASH'
 文件名使用会话、消息和附件 ID，加上媒体类型，不采用发送者提供的路径。
 成功结果包含字节数和 SHA-256。`skipped` 附带原因，例如已删除、受保护、已替换或超过大小限制。
 `error` 表示传输或写入失败。处理完匹配后命令退出，不推进归档游标，也不修改 JSONL。
-每次完成下载都会记录在 `archive/index.sqlite` 的 `files` 表。
+`downloaded` 表示文件已保存，并已记录在 `archive/index.sqlite` 的 `files` 表。
 下载器仅在共享索引中写下载记录，其他元数据由归档器维护。
 下载器自己的客户端绑定与等待状态写入 `fetch-data/state.sqlite`。
+
+若文件已保存但 SQLite 下载记录写入失败，结果为 `error`，仍包含已保存的 `path`、
+大小、SHA-256 和指出索引写入失败的原因。文件会保留，但没有确认成功的数据库记录。
+请先检查该路径并解决数据库错误，再决定是否重新下载。
 
 再次下载同一个未变化附件时，会替换同一路径的本地文件。
 批量下载时先预览相同条件，再增加 `--limit`。

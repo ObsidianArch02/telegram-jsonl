@@ -79,7 +79,10 @@ set -gx TG_API_HASH 'YOUR_APP_HASH'
 ./telegram-jsonl archive --client native --data ./data-native --login
 ```
 
-Do not put credentials in source files, issues, terminal recordings, or commits.
+Keep contributor-specific credentials in private environment configuration,
+not source files, issues, terminal recordings, or commits. Changes to the
+project's default application identity require explicit maintainer authorization;
+review its inclusion in source and Git history before any public upload.
 
 | Archive flag | Default | Meaning |
 | --- | --- | --- |
@@ -193,10 +196,15 @@ Files use conversation, message, and attachment IDs plus the media type rather t
 paths. Successful results include bytes and SHA-256. `skipped` contains a reason
 such as deletion, protection, replacement, or exceeding the size limit.
 `error` indicates a transfer or write failure. The command exits after processing
-its matches. It does not advance archive cursors or change JSONL. Each completed
-download is recorded in `archive/index.sqlite`'s `files` table. Fetch writes only
+its matches. It does not advance archive cursors or change JSONL. A `downloaded`
+result means the file is saved and recorded in `archive/index.sqlite`'s `files` table. Fetch writes only
 that download ledger in the shared index; the archiver owns its other metadata.
 It also writes its own client binding and cooldown to `fetch-data/state.sqlite`.
+
+If the file was saved but the SQLite ledger write fails, the result is `error`
+with the saved `path`, size, SHA-256, and a reason identifying the ledger failure.
+The file is retained, but it has no confirmed ledger entry. Check that path and
+resolve the database error before deciding to download again.
 
 Downloading the same unchanged attachment again replaces the same local path.
 For several files, preview the intended conditions first, then increase `--limit`.

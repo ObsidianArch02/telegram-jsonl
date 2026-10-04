@@ -62,5 +62,7 @@ JSONL 仍是消息存储，SQLite 不再复制正文，下载记录也不能恢�
 大规模一次性导出可考虑 [Telegram Desktop 导出](https://telegram.org/blog/export-and-more)，
 或独立 [Takeout API](https://core.telegram.org/api/takeout) 实现。
 
-本地自动化测试使用模拟输入。真实账户登录、内置应用身份可用性、网络重连和服务端差分恢复仍未验证。
+本地自动化测试使用模拟输入。一次独立的未授权在线探测已确认 Telegram 接受本项目配置的
+应用凭证并返回 `auth.exportLoginToken` 登录令牌；探测没有登录账户或访问消息。
+SQLite 流程中的真实账户登录、归档和下载，以及网络重连和服务端更新恢复，仍未完成端到端验证。
 请阅读[安全说明](../SECURITY.zh-CN.md)与[免责声明](../DISCLAIMER.zh-CN.md)。

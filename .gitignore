@@ -1,0 +1,46 @@
+/data/
+/data-tdl/
+/fetch-data/
+/attachments/
+/telegram-jsonl
+/tools/tdl
+*.test
+
+# Local accounts, archives, downloads, and credentials.
+/data*/
+/fetch-data*/
+*.jsonl
+*.session
+*.session-journal
+*.db
+*.db-*
+*.kv
+*.log
+*.env
+.env.*
+session.json
+updates.json
+cooldown.json
+login.json
+metadata.json
+.lock
+.tdl-launch.lock
+.write-*
+.fetch-*
+
+# Build products and temporary files.
+/dist/
+/bin/
+/work/
+/tools/
+*.exe
+*.zip
+*.tar.gz
+*.out
+*.prof
+.DS_Store
+.idea/
+.vscode/
+
+# Retired binary-based integration, kept locally for migration reference.
+/integrations/tdl/

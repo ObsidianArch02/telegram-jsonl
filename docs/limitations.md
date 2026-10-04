@@ -26,6 +26,14 @@ for Telegram's rate limit. Reconnection must recover updates or finish reconcili
 Long gaps can exceed the service's update retention; intermediate states and short-lived
 messages may be unrecoverable.
 
+The archiver updates the SQLite media index together with its managed metadata;
+completed-download entries in `files` are separate and survive remote deletion.
+Replacing JSONL and updating SQLite are separate writes. If an index update
+fails, the archiver stops; on restart it rebuilds media associations from the
+current JSONL while applying its persisted deletion and exclusion state.
+JSONL messages remain the message store. SQLite is not a second copy of message
+bodies, and a ledger entry does not restore an unavailable message.
+
 Removal covers the active files managed by this program. External copies, backups,
 filesystem snapshots, old open file descriptors, and disk remnants are outside
 its control. Atomic replacement is not secure erasure.
@@ -37,6 +45,9 @@ and again before committing the completed file. These checks cannot predict a
 deletion occurring after the download. Saved files have no background deletion
 sync and are not lifecycle mirrors of Telegram messages. Manage their retention
 and backups separately.
+Fetch records successful downloads in the shared SQLite `files` ledger while
+leaving JSONL and archiver metadata unchanged. The ledger can contain paths to
+files you later moved or removed; it does not monitor the filesystem.
 
 ## Account and Process Boundaries
 
@@ -48,6 +59,12 @@ automatically rotate accounts, authorizations, or application identities.
 The program does not send chat messages, join groups, or mark messages as read.
 Normal MTProto operation still changes connection and authorization state; a user
 authorization is not a server-enforced read-only permission.
+
+All non-message, non-login state resides in SQLite. Old JSON metadata/state is
+not imported; use fresh data directories for this storage version. Preserve
+prior data and protect databases and WAL/SHM sidecars as private account data.
+Use SQLite's backup API for database snapshots; stop archive and fetch before
+copying JSONL and databases as one complete archive backup.
 
 ## Coverage and Scale
 

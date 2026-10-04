@@ -13,6 +13,8 @@
 *.session-journal
 *.db
 *.db-*
+*.sqlite
+*.sqlite-*
 *.kv
 *.log
 *.env

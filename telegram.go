@@ -7,6 +7,7 @@ import (
 	"log"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,13 +68,16 @@ func (r *receiver) remember(key string, p PeerInfo) error {
 	if old, ok := r.entities[key]; ok && p.AccessHash == 0 {
 		p.AccessHash = old.AccessHash
 	}
+	if old, ok := r.entities[key]; ok && p.Name == "" {
+		p.Name, p.Username = old.Name, old.Username
+	}
 	r.entities[key] = p
 	r.entitiesMu.Unlock()
 	// Entity lists also contain group senders; they are not all account dialogs.
 	if _, ok := r.archive.peer(key); ok {
 		return r.archive.register(key, p)
 	}
-	return nil
+	return r.archive.observePeer(key, p)
 }
 
 func (r *receiver) remembered(key string, p PeerInfo) PeerInfo {
@@ -85,10 +89,36 @@ func (r *receiver) remembered(key string, p PeerInfo) PeerInfo {
 	return p
 }
 
+func activeUsername(primary string, aliases []tg.Username) string {
+	if primary != "" {
+		return primary
+	}
+	for _, alias := range aliases {
+		if alias.Active {
+			return alias.Username
+		}
+	}
+	return ""
+}
+
+func userName(first, last, username string, deleted bool) string {
+	if deleted {
+		return "Deleted Account"
+	}
+	if name := strings.TrimSpace(first + " " + last); name != "" {
+		return name
+	}
+	if username != "" {
+		return "@" + username
+	}
+	return ""
+}
+
 func (r *receiver) observe(users []tg.UserClass, chats []tg.ChatClass) error {
 	for _, u := range users {
 		if u, ok := u.(*tg.User); ok && !u.Min {
-			if err := r.remember(fmt.Sprintf("user-%d", u.ID), PeerInfo{Kind: "user", ID: u.ID, AccessHash: u.AccessHash}); err != nil {
+			username := activeUsername(u.Username, u.Usernames)
+			if err := r.remember(fmt.Sprintf("user-%d", u.ID), PeerInfo{Kind: "user", ID: u.ID, Name: userName(u.FirstName, u.LastName, username, u.Deleted), Username: username, AccessHash: u.AccessHash}); err != nil {
 				return err
 			}
 		}
@@ -97,7 +127,7 @@ func (r *receiver) observe(users []tg.UserClass, chats []tg.ChatClass) error {
 		switch c := c.(type) {
 		case *tg.Chat:
 			key := fmt.Sprintf("chat-%d", c.ID)
-			if err := r.remember(key, PeerInfo{Kind: "chat", ID: c.ID}); err != nil {
+			if err := r.remember(key, PeerInfo{Kind: "chat", ID: c.ID, Name: c.Title}); err != nil {
 				return err
 			}
 			if c.Noforwards {
@@ -108,10 +138,12 @@ func (r *receiver) observe(users []tg.UserClass, chats []tg.ChatClass) error {
 		case *tg.Channel:
 			key := fmt.Sprintf("channel-%d", c.ID)
 			hash := c.AccessHash
+			name, username := c.Title, activeUsername(c.Username, c.Usernames)
 			if c.Min {
 				hash = 0
+				name, username = "", ""
 			}
-			if err := r.remember(key, PeerInfo{Kind: "channel", ID: c.ID, AccessHash: hash}); err != nil {
+			if err := r.remember(key, PeerInfo{Kind: "channel", ID: c.ID, Name: name, Username: username, AccessHash: hash}); err != nil {
 				return err
 			}
 			if !c.Min && hash != 0 {
@@ -164,6 +196,18 @@ func ephemeral(m *tg.Message) bool {
 func (r *receiver) records(messages []tg.MessageClass, live bool, fence uint64) error {
 	rows := make([]Record, 0, len(messages))
 	for _, item := range messages {
+		if service, ok := item.(*tg.MessageService); ok {
+			if action, ok := service.Action.(*tg.MessageActionChatEditTitle); ok {
+				key := peerKey(service.PeerID)
+				if p, ok := r.archive.peer(key); ok {
+					p.Name = action.Title
+					if err := r.remember(key, p); err != nil {
+						return err
+					}
+				}
+			}
+			continue
+		}
 		m, ok := item.(*tg.Message)
 		if !ok {
 			continue
@@ -218,6 +262,10 @@ func (r *receiver) records(messages []tg.MessageClass, live bool, fence uint64) 
 
 func (r *receiver) handler() telegram.UpdateHandler {
 	d := tg.NewUpdateDispatcher()
+	d.OnUserName(func(_ context.Context, _ tg.Entities, u *tg.UpdateUserName) error {
+		username := activeUsername("", u.Usernames)
+		return r.remember(fmt.Sprintf("user-%d", u.UserID), PeerInfo{Kind: "user", ID: u.UserID, Name: userName(u.FirstName, u.LastName, username, false), Username: username})
+	})
 	d.OnNewMessage(func(_ context.Context, _ tg.Entities, u *tg.UpdateNewMessage) error {
 		return r.records([]tg.MessageClass{u.Message}, true, 0)
 	})
@@ -306,6 +354,10 @@ func (r *receiver) discover(ctx context.Context) error {
 			if err := r.archive.register(key, p); err != nil {
 				return err
 			}
+			var users []tg.UserClass
+			for _, u := range d.Entities.Users() {
+				users = append(users, u)
+			}
 			var chats []tg.ChatClass
 			for _, c := range d.Entities.Chats() {
 				chats = append(chats, c)
@@ -313,7 +365,7 @@ func (r *receiver) discover(ctx context.Context) error {
 			for _, c := range d.Entities.Channels() {
 				chats = append(chats, c)
 			}
-			if err := r.observe(nil, chats); err != nil {
+			if err := r.observe(users, chats); err != nil {
 				return err
 			}
 			count++

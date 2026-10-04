@@ -93,7 +93,12 @@ use the rules below and report that their hook could not be run.
   level; do not restore an embedded executable or external tdl subprocess.
 - Keep `archive`, `search`, and `fetch` as subcommands of that binary.
   `archive` is the resident JSONL writer; `search` is offline and read-only;
-  `fetch` is a one-shot downloader that never modifies the archive.
+  `fetch` is a one-shot downloader that never modifies JSONL or archiver state;
+  it may write completed-file mappings to the shared SQLite index.
+- Store non-message, non-login data in SQLite. Keep chat records in JSONL and
+  login authorization in `session.json`. Do not import or convert retired JSON
+  state files; preserve existing exports and require a fresh directory when
+  they lack SQLite account and deletion metadata.
 - Preserve a single account and stable sessions, with separate archive/fetch
   authorizations bound to the same account.
 - Keep history backfill configurable and bounded by default. Honor RPC pacing,

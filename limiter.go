@@ -19,18 +19,29 @@ type rpcGate struct {
 	next     time.Time
 	cooldown time.Time
 	path     string
+	store    *sqliteStore
 	failure  *failure
 }
 
 func openGate(path string, interval time.Duration, fail *failure) (*rpcGate, error) {
 	g := &rpcGate{path: path, interval: interval, failure: fail}
-	if err := readJSON(path, &g.cooldown); err != nil && !os.IsNotExist(err) {
+	store, err := openSQLite(path)
+	if err != nil {
+		return nil, err
+	}
+	g.store = store
+	if err := store.ReadJSON("cooldown", &g.cooldown); err != nil && !os.IsNotExist(err) {
+		_ = store.Close()
 		return nil, err
 	}
 	if time.Until(g.cooldown) > 0 {
 		log.Printf("Resuming saved FLOOD_WAIT; RPC calls paused until %s", g.cooldown.In(time.Local).Format(time.RFC3339))
 	}
 	return g, nil
+}
+
+func (g *rpcGate) Close() error {
+	return g.store.Close()
 }
 
 func waitContext(ctx context.Context, delay time.Duration) error {
@@ -69,7 +80,7 @@ func (g *rpcGate) Handle(next tg.Invoker) telegram.InvokeFunc {
 				return err
 			}
 			g.cooldown = time.Now().Add(delay + time.Second)
-			if err := writeJSON(g.path, g.cooldown); err != nil {
+			if err := g.store.WriteJSON("cooldown", g.cooldown); err != nil {
 				return g.failure.report(err)
 			}
 			log.Printf("Telegram requested FLOOD_WAIT; pausing RPC calls for %s until %s", delay+time.Second, g.cooldown.In(time.Local).Format(time.RFC3339))

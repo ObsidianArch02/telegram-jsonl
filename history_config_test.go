@@ -136,6 +136,7 @@ func TestHistoryScopeWideningResetsPersistedProgress(t *testing.T) {
 	requireOK(t, a.upsert([]Record{row("user-7", 99, "existing")}, true, 0))
 	a, err := openArchive(a.dir, &failure{})
 	requireOK(t, err)
+	t.Cleanup(func() { _ = a.Close() })
 	requireOK(t, a.setHistoryScope(1690000000))
 	p, _ := a.peer("user-7")
 	if p.HistoryDone || p.Offset != 0 || p.Newest != 100 || p.HistorySince != 1690000000 {

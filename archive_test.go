@@ -30,9 +30,11 @@ func fixture(t *testing.T) (*archive, *receiver) {
 	fail := &failure{}
 	a, err := openArchive(filepath.Join(t.TempDir(), "archive"), fail)
 	requireOK(t, err)
+	t.Cleanup(func() { _ = a.Close() })
 	requireOK(t, a.bind(42))
-	s, err := openProtocolStore(filepath.Join(t.TempDir(), "updates.json"), fail)
+	s, err := openProtocolStore(filepath.Join(t.TempDir(), "state.sqlite"), fail)
 	requireOK(t, err)
+	t.Cleanup(func() { _ = s.Close() })
 	requireOK(t, s.bind(42))
 	return a, &receiver{archive: a, protocol: s, self: 42, batch: 2, failure: fail, resync: make(chan struct{}, 1)}
 }
@@ -77,13 +79,15 @@ func TestEditDeleteRestartAndStaleFetch(t *testing.T) {
 	requireOK(t, a.upsert([]Record{edited}, false, a.fence()))
 	reopened, err := openArchive(a.dir, &failure{})
 	requireOK(t, err)
+	t.Cleanup(func() { _ = reopened.Close() })
 	requireOK(t, reopened.upsert([]Record{edited}, true, 0))
 	if fileText(t, reopened, "user-7") != "" {
 		t.Fatal("deleted content resurrected")
 	}
-	metadata, err := os.ReadFile(a.metaPath())
+	var metadata string
+	err = a.index.db.QueryRow("SELECT value_json FROM state WHERE key='archive_metadata'").Scan(&metadata)
 	requireOK(t, err)
-	if strings.Contains(string(metadata), "body") {
+	if strings.Contains(metadata, "body") {
 		t.Fatal("tombstone contains body")
 	}
 }
@@ -129,6 +133,7 @@ func TestCrashRecoveryPurgesBodyAfterTombstoneCommit(t *testing.T) {
 	requireOK(t, os.WriteFile(filepath.Join(a.dir, ".write-interrupted"), []byte("old-private-body"), 0600))
 	b, err := openArchive(a.dir, &failure{})
 	requireOK(t, err)
+	t.Cleanup(func() { _ = b.Close() })
 	if fileText(t, b, "user-7") != "" {
 		t.Fatal("crash recovery kept deleted body")
 	}
@@ -244,6 +249,7 @@ func TestStorageFailureStopsCursorAdvancement(t *testing.T) {
 	requireOK(t, r.protocol.SetChannelAccessHash(ctx, 42, 9, 123))
 	reopened, err := openProtocolStore(r.protocol.path, &failure{})
 	requireOK(t, err)
+	t.Cleanup(func() { _ = reopened.Close() })
 	n, ok, err := reopened.GetChannelPts(ctx, 42, 9)
 	requireOK(t, err)
 	if !ok || n != 100 {
@@ -254,16 +260,17 @@ func TestStorageFailureStopsCursorAdvancement(t *testing.T) {
 		t.Fatal("cursor advanced after archive failure")
 	}
 	var saved protocolData
-	requireOK(t, readJSON(r.protocol.path, &saved))
+	requireOK(t, readStateJSON(r.protocol.path, "updates", &saved))
 	if saved.State.Pts != 10 {
 		t.Fatal("disk cursor skipped failed message")
 	}
 }
 
 func TestFloodWaitPersistsAndCancellationDoesNotRetry(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "cooldown.json")
+	path := filepath.Join(t.TempDir(), "state.sqlite")
 	g, err := openGate(path, time.Millisecond, &failure{})
 	requireOK(t, err)
+	t.Cleanup(func() { _ = g.Close() })
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
 	defer cancel()
 	calls := 0
@@ -274,6 +281,7 @@ func TestFloodWaitPersistsAndCancellationDoesNotRetry(t *testing.T) {
 	}
 	reopened, err := openGate(path, time.Second, &failure{})
 	requireOK(t, err)
+	t.Cleanup(func() { _ = reopened.Close() })
 	if time.Until(reopened.cooldown) < 9*time.Second {
 		t.Fatal("restart discarded FLOOD_WAIT")
 	}
@@ -312,6 +320,7 @@ func TestHistoryResumesWithoutSkippingPages(t *testing.T) {
 	}
 	a, err := openArchive(a.dir, &failure{})
 	requireOK(t, err)
+	t.Cleanup(func() { _ = a.Close() })
 	r.archive = a
 	p, _ = a.peer("user-7")
 	if p.Offset != 3 || p.HistoryDone {

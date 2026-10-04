@@ -22,7 +22,9 @@ RPC responses for lifecycle, archive, and download tests.
 Keep changes scoped and explain the user-visible behavior and relevant validation.
 Add regression coverage when changing account binding, session isolation, deletion,
 protection, history windows, or attachment validation. Preserve `archive` as the
-only JSONL writer; `search` and `fetch` must remain read-only consumers.
+only JSONL writer; `search` remains read-only. Fetch reads messages without
+modifying JSONL or archiver metadata and may write only completed-download
+records to the shared SQLite `files` ledger.
 
 Never commit account sessions, login tokens, application secrets, message archives,
 downloaded attachments, or logs containing personal content. Review the actual

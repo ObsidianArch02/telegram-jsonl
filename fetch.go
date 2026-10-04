@@ -46,10 +46,12 @@ type fetchResult struct {
 type fetchRunner struct {
 	api        *tg.Client
 	fileClient func(context.Context, int) (downloader.Client, func(), error)
+	catalog    *sqliteStore
 }
 
 type attachment struct {
 	ID        int64
+	Kind      string
 	DC        int
 	Size      int64
 	Extension string
@@ -133,6 +135,7 @@ func attachmentFrom(m *tg.Message, maxBytes int64) (attachment, error) {
 	var a attachment
 	switch media := m.Media.(type) {
 	case *tg.MessageMediaDocument:
+		a.Kind = "document"
 		d, ok := media.Document.(*tg.Document)
 		if !ok {
 			return a, errors.New("document is unavailable")
@@ -147,6 +150,7 @@ func attachmentFrom(m *tg.Message, maxBytes int64) (attachment, error) {
 		a.Extension = fileExtension(name, d.MimeType)
 		a.Location = &tg.InputDocumentFileLocation{ID: d.ID, AccessHash: d.AccessHash, FileReference: d.FileReference}
 	case *tg.MessageMediaPhoto:
+		a.Kind = "photo"
 		p, ok := media.Photo.(*tg.Photo)
 		if !ok {
 			return a, errors.New("photo is unavailable")
@@ -185,6 +189,24 @@ func attachmentFrom(m *tg.Message, maxBytes int64) (attachment, error) {
 		return a, fmt.Errorf("attachment exceeds --max-file-bytes (%d)", maxBytes)
 	}
 	return a, nil
+}
+
+func archivedAttachmentKind(record Record) string {
+	if record.Media != nil {
+		switch record.Media.Kind {
+		case "photo":
+			return "photo"
+		case "document", "voice", "audio", "video", "video_note", "animation", "sticker":
+			return "document"
+		}
+	}
+	switch record.MediaType {
+	case "messageMediaPhoto":
+		return "photo"
+	case "messageMediaDocument":
+		return "document"
+	}
+	return ""
 }
 
 func (f *fetchRunner) message(ctx context.Context, record Record, peer PeerInfo) (*tg.Message, error) {
@@ -273,6 +295,10 @@ func (f *fetchRunner) download(ctx context.Context, record Record, peer PeerInfo
 		result.Reason = "attachment changed; refresh the JSONL archive before downloading"
 		return
 	}
+	if kind := archivedAttachmentKind(record); kind != "" && kind != a.Kind {
+		result.Reason = "attachment type changed; refresh the JSONL archive before downloading"
+		return
+	}
 	if !validPeer.MatchString(record.Peer) {
 		result.Status = "error"
 		result.Reason = "invalid peer"
@@ -341,7 +367,7 @@ func (f *fetchRunner) download(ctx context.Context, record Record, peer PeerInfo
 				return
 			}
 			fresh, refreshErr := attachmentFrom(refreshed, maxBytes)
-			if refreshErr != nil || fresh.ID != a.ID {
+			if refreshErr != nil || fresh.ID != a.ID || fresh.Kind != a.Kind {
 				result.Reason = "attachment changed or became unavailable during reference refresh"
 				return
 			}
@@ -369,7 +395,7 @@ func (f *fetchRunner) download(ctx context.Context, record Record, peer PeerInfo
 		return
 	}
 	currentAttachment, err := attachmentFrom(current, maxBytes)
-	if err != nil || currentAttachment.ID != a.ID {
+	if err != nil || currentAttachment.ID != a.ID || currentAttachment.Kind != a.Kind {
 		result.Reason = "attachment changed or became unavailable during download"
 		return
 	}
@@ -383,7 +409,7 @@ func (f *fetchRunner) download(ctx context.Context, record Record, peer PeerInfo
 		result.Reason = err.Error()
 		return
 	}
-	path := filepath.Join(output, fmt.Sprintf("%s-%d-%d%s", record.Peer, record.MessageID, a.ID, a.Extension))
+	path := filepath.Join(output, fmt.Sprintf("%s-%d-%s-%d%s", record.Peer, record.MessageID, a.Kind, a.ID, a.Extension))
 	if err := replaceFile(tmp.Name(), path); err != nil {
 		result.Status = "error"
 		result.Reason = err.Error()
@@ -395,12 +421,21 @@ func (f *fetchRunner) download(ctx context.Context, record Record, peer PeerInfo
 		return
 	}
 	result.Status, result.Path, result.Size, result.SHA256 = "downloaded", path, bytes, digest
+	if f.catalog != nil {
+		completedRecord := record
+		completedRecord.Media = mediaDetails(current.Media)
+		completedRecord.MediaType = current.Media.TypeName()
+		if err := f.catalog.RecordDownload(completedRecord, strconv.FormatInt(a.ID, 10), result); err != nil {
+			result.Status = "error"
+			result.Reason = fmt.Sprintf("file downloaded, but SQLite file ledger was not updated: %v", err)
+		}
+	}
 	return
 }
 
 func runFetch(args []string) error {
 	fs := flag.NewFlagSet("telegram-jsonl fetch", flag.ContinueOnError)
-	archiveDir := fs.String("archive", "./data-tdl/archive", "local JSONL archive directory (read only)")
+	archiveDir := fs.String("archive", "./data-tdl/archive", "JSONL directory; SQLite file ledger updated")
 	data := fs.String("data", "./fetch-data", "downloader's separate stable session directory")
 	output := fs.String("output", "", "download directory (default: fetch-data/attachments)")
 	pattern := fs.String("pattern", "", "regular expression; run search first to preview matches")
@@ -474,10 +509,11 @@ func runFetch(args []string) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	fail := &failure{cancel: cancel}
-	gate, err := openGate(filepath.Join(d, "cooldown.json"), *interval, fail)
+	gate, err := openGate(filepath.Join(d, "state.sqlite"), *interval, fail)
 	if err != nil {
 		return err
 	}
+	defer gate.Close()
 	storage, err := sourceStorage(d, cfg, fail, *relogin)
 	if err != nil {
 		return err
@@ -494,7 +530,19 @@ func runFetch(args []string) error {
 		if status.User == nil || status.User.Bot || status.User.ID != snapshot.Meta.AccountID {
 			return errors.New("downloader must log in to the same user account as the archive")
 		}
-		runner := &fetchRunner{api: client.API(), fileClient: func(ctx context.Context, dc int) (downloader.Client, func(), error) {
+		catalog, err := openSQLite(filepath.Join(a, "index.sqlite"))
+		if err != nil {
+			return err
+		}
+		defer catalog.Close()
+		var liveMeta archiveMeta
+		if err := catalog.ReadJSON("archive_metadata", &liveMeta); err != nil {
+			return err
+		}
+		if liveMeta.AccountID != status.User.ID {
+			return errors.New("archive account changed before attachment download")
+		}
+		runner := &fetchRunner{api: client.API(), catalog: catalog, fileClient: func(ctx context.Context, dc int) (downloader.Client, func(), error) {
 			conn, err := client.DC(ctx, dc, 1)
 			if err != nil {
 				return nil, nil, err

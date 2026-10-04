@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -60,16 +59,29 @@ func resolveSourceConfig(mode, namespace string) (sourceConfig, error) {
 }
 
 func sourceStorage(dataDir string, c sourceConfig, fail *failure, reset bool) (*stableSession, error) {
-	path := filepath.Join(dataDir, "client.json")
+	store, err := openSQLite(filepath.Join(dataDir, "state.sqlite"))
+	if err != nil {
+		return nil, err
+	}
+	defer store.Close()
 	var identity clientIdentity
-	err := readJSON(path, &identity)
+	err = store.ReadJSON("client", &identity)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 	if err == nil && identity != c.clientIdentity {
 		return nil, errors.New("session directory belongs to a different client identity or component")
 	}
-	if err := writeJSON(path, c.clientIdentity); err != nil {
+	if os.IsNotExist(err) && !reset {
+		_, sessionErr := os.Stat(filepath.Join(dataDir, "session.json"))
+		if sessionErr == nil {
+			return nil, errors.New("existing session has no SQLite client identity; use a fresh data directory or explicitly reauthorize with --login --tdl-relogin")
+		}
+		if !os.IsNotExist(sessionErr) {
+			return nil, sessionErr
+		}
+	}
+	if err := store.WriteJSON("client", c.clientIdentity); err != nil {
 		return nil, err
 	}
 	return &stableSession{path: filepath.Join(dataDir, "session.json"), failure: fail, ignoreExisting: reset}, nil
@@ -143,10 +155,6 @@ func tdlResolver(address string) (dcs.Resolver, error) {
 
 func currentSessionIdentity(dataDir string) (clientIdentity, error) {
 	var c clientIdentity
-	b, err := os.ReadFile(filepath.Join(dataDir, "client.json"))
-	if err != nil {
-		return c, err
-	}
-	err = json.Unmarshal(b, &c)
+	err := readStateJSON(filepath.Join(dataDir, "state.sqlite"), "client", &c)
 	return c, err
 }

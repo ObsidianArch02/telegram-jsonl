@@ -156,16 +156,19 @@ func runArchive(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer store.Close()
 	peers, records := store.counts()
 	log.Printf("Loaded archive: peers=%d records=%d", peers, records)
-	protocol, err := openProtocolStore(filepath.Join(*data, "updates.json"), fail)
+	protocol, err := openProtocolStore(filepath.Join(*data, "state.sqlite"), fail)
 	if err != nil {
 		return err
 	}
-	gate, err := openGate(filepath.Join(*data, "cooldown.json"), *interval, fail)
+	defer protocol.Close()
+	gate, err := openGate(filepath.Join(*data, "state.sqlite"), *interval, fail)
 	if err != nil {
 		return err
 	}
+	defer gate.Close()
 	r := &receiver{archive: store, protocol: protocol, batch: *batch, failure: fail, resync: make(chan struct{}, 1), historyPolicy: historyPolicy}
 	manager := updates.New(updates.Config{Handler: r.handler(), Storage: protocol, AccessHasher: protocol, OnChannelTooLong: func(id int64) {
 		log.Printf("Update gap for channel-%d; scheduling history reconciliation", id)

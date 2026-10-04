@@ -36,6 +36,8 @@ type Record struct {
 type PeerInfo struct {
 	Kind         string `json:"kind"`
 	ID           int64  `json:"id"`
+	Name         string `json:"name,omitempty"`
+	Username     string `json:"username,omitempty"`
 	AccessHash   int64  `json:"access_hash,omitempty"`
 	Offset       int    `json:"history_offset"`
 	HistoryDone  bool   `json:"history_done"`
@@ -59,6 +61,7 @@ type archive struct {
 	generation uint64
 	versions   map[string]map[int]uint64
 	failure    *failure
+	index      *sqliteStore
 }
 
 var validPeer = regexp.MustCompile(`^(user|chat|channel)-[1-9][0-9]*$`)
@@ -69,9 +72,31 @@ func openArchive(dir string, fail *failure) (*archive, error) {
 	}
 	a := &archive{dir: dir, rows: make(map[string]map[int]Record), versions: make(map[string]map[int]uint64), failure: fail}
 	a.meta = archiveMeta{Peers: map[string]PeerInfo{}, Deleted: map[string]map[int]bool{}, NonChannelDeleted: map[int]bool{}, Blocked: map[string]string{}}
-	err := readJSON(a.metaPath(), &a.meta)
+	files, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(a.metaPath()); os.IsNotExist(err) && len(files) > 0 {
+		return nil, errors.New("existing JSONL requires SQLite archive metadata; use a fresh --data directory, existing exports are unchanged")
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	a.index, err = openSQLite(a.metaPath())
+	if err != nil {
+		return nil, err
+	}
+	opened := false
+	defer func() {
+		if !opened {
+			_ = a.index.Close()
+		}
+	}()
+	err = a.index.ReadJSON("archive_metadata", &a.meta)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
+	}
+	if os.IsNotExist(err) && len(files) > 0 {
+		return nil, errors.New("SQLite archive metadata missing for existing JSONL; use a fresh --data directory")
 	}
 	if a.meta.Peers == nil || a.meta.Deleted == nil || a.meta.NonChannelDeleted == nil || a.meta.Blocked == nil {
 		return nil, errors.New("invalid archive metadata")
@@ -85,10 +110,6 @@ func openArchive(dir string, fail *failure) (*archive, error) {
 		if err := os.Remove(path); err != nil {
 			return nil, err
 		}
-	}
-	files, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
-	if err != nil {
-		return nil, err
 	}
 	for _, path := range files {
 		peer := strings.TrimSuffix(filepath.Base(path), ".jsonl")
@@ -136,11 +157,31 @@ func openArchive(dir string, fail *failure) (*archive, error) {
 			}
 		}
 	}
+	for key := range a.meta.Blocked {
+		if err := a.index.RemovePeer(key); err != nil {
+			return nil, err
+		}
+	}
+	for key, p := range a.meta.Peers {
+		if a.meta.Blocked[key] != "" {
+			continue
+		}
+		if err := a.index.UpsertPeer(key, p, true); err != nil {
+			return nil, err
+		}
+		if err := a.index.SyncMessages(key, a.rows[key]); err != nil {
+			return nil, err
+		}
+	}
+	opened = true
 	return a, nil
 }
 
-func (a *archive) metaPath() string { return filepath.Join(a.dir, "metadata.json") }
-func (a *archive) saveMeta() error  { return a.failure.report(writeJSON(a.metaPath(), a.meta)) }
+func (a *archive) Close() error     { return a.index.Close() }
+func (a *archive) metaPath() string { return filepath.Join(a.dir, "index.sqlite") }
+func (a *archive) saveMeta() error {
+	return a.failure.report(a.index.WriteJSON("archive_metadata", a.meta))
+}
 func (a *archive) excluded(peer string, id int) bool {
 	return a.meta.Blocked[peer] != "" || a.meta.Deleted[peer][id] || (!strings.HasPrefix(peer, "channel-") && a.meta.NonChannelDeleted[id])
 }
@@ -169,12 +210,30 @@ func (a *archive) register(key string, p PeerInfo) error {
 		if p.AccessHash == 0 {
 			p.AccessHash = old.AccessHash
 		}
+		if p.Name == "" {
+			p.Name, p.Username = old.Name, old.Username
+		}
 	}
 	if a.meta.Peers[key] == p {
 		return nil
 	}
 	a.meta.Peers[key] = p
-	return a.saveMeta()
+	if err := a.saveMeta(); err != nil {
+		return err
+	}
+	if a.meta.Blocked[key] != "" {
+		return nil
+	}
+	return a.failure.report(a.index.UpsertPeer(key, p, true))
+}
+
+func (a *archive) observePeer(key string, p PeerInfo) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.meta.Blocked[key] != "" {
+		return nil
+	}
+	return a.failure.report(a.index.UpsertPeer(key, p, false))
 }
 
 func (a *archive) peers() map[string]PeerInfo {
@@ -264,7 +323,10 @@ func (a *archive) flush(peer string) error {
 			return a.failure.report(err)
 		}
 	}
-	return a.failure.report(atomicWrite(filepath.Join(a.dir, peer+".jsonl"), b.Bytes()))
+	if err := a.failure.report(atomicWrite(filepath.Join(a.dir, peer+".jsonl"), b.Bytes())); err != nil {
+		return err
+	}
+	return a.failure.report(a.index.SyncMessages(peer, a.rows[peer]))
 }
 
 func (a *archive) touch(peer string, id int) {
@@ -402,6 +464,9 @@ func (a *archive) block(peer, reason string) error {
 	}
 	a.meta.Blocked[peer] = reason
 	if err := a.saveMeta(); err != nil {
+		return err
+	}
+	if err := a.failure.report(a.index.RemovePeer(peer)); err != nil {
 		return err
 	}
 	removed := len(a.rows[peer])

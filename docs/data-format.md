@@ -12,22 +12,92 @@ Each component keeps its state in its own data directory:
 data-tdl/
   .lock                 Single-process session lock
   session.json          Account authorization; treat as a credential
-  client.json           Client application and component binding, without app hash
-  updates.json          Update cursors and channel access hashes
-  cooldown.json         Persisted FLOOD_WAIT deadline
+  state.sqlite          Client binding, update cursors, channel hashes, cooldown
   archive/
-    metadata.json       Account binding, peers, scan progress, deletion markers
+    index.sqlite        Archive metadata, peers, media index, downloaded-file ledger
     user-123.jsonl      Private conversation
     chat-456.jsonl      Basic group
     channel-789.jsonl   Supergroup or channel
 ```
 
-Fetch keeps its authorization and cooldown in `fetch-data/`, with downloaded
-files in `fetch-data/attachments/` unless `--output` specifies another directory.
+Fetch keeps its own `session.json` and `state.sqlite` in `fetch-data/`, with
+downloaded files in `fetch-data/attachments/` unless `--output` specifies another
+directory. It records completed downloads in the shared archive's `files` table,
+without changing messages, archive metadata, peers, or the media index.
+
+Only login authorization stays in JSON outside the message files. Other runtime
+and index data is stored in SQLite. The pure-Go SQLite driver preserves the
+single-executable build without CGO or a separately installed SQLite library.
+The optional `sqlite3` CLI is useful for inspecting the database; the program
+does not require it.
+
+Older `metadata.json`, `updates.json`, `cooldown.json`, and `client.json` files
+are neither imported nor read. They are preserved rather than deleted. Archives
+with old JSON metadata and no SQLite index require a fresh data directory;
+see [upgrading](usage.md#upgrading-from-json-state).
 
 Do not share state as a diagnostic attachment. Internal metadata includes access
 information not intended for downstream consumers. Restrictive file permissions
 are not encryption; use the operating system's access controls and disk protection.
+`index.sqlite` is a private internal database containing conversation access
+hashes as well as names and file paths. It is not a public peer-name export;
+do not publish the database indiscriminately.
+Protect both databases and their `-wal`/`-shm` sidecar files. SQLite's backup API
+can produce a consistent database snapshot. To back up JSONL and databases as a
+complete archive, stop the archiver and downloader before copying their state.
+Copying only a live `.sqlite` file can lose committed data still in its WAL.
+Windows users must check the folder's NTFS permissions.
+SQLite readers can create WAL/SHM coordination sidecars even when opened read-only.
+Search performs no logical database writes and does not modify the main database
+or JSONL, but this does not guarantee an entirely unchanged directory.
+
+## SQLite Index
+
+`archive/index.sqlite` contains these tables:
+
+| Table | Purpose |
+| --- | --- |
+| `state` | Serialized internal state; the `archive_metadata` key stores account binding, peer access information, history progress, deletion markers, and blocked conversations. |
+| `peers` | `peer`, `kind`, numeric `id`, display `name`, `username`, and `is_dialog`. |
+| `media` | `peer`, `message_id`, `media_id`, `media_kind`, `file_name`, `mime_type`, and `size_bytes` for current attachment records. |
+| `files` | Completed downloads: `peer`, `message_id`, `media_id`, `media_kind`, local `path`, `size_bytes`, `sha256`, and `downloaded_at`. |
+
+The `files` primary key is `(peer, message_id, media_id, media_kind, path)`.
+`media_kind` comes from the actual downloaded attachment's metadata; it separates
+different attachment classes whose numeric IDs could coincide. `downloaded_at`
+is a UTC RFC3339 timestamp with available fractional-second precision.
+
+Display names and usernames are populated from discovered Telegram entities;
+they may be unknown before discovery or absent on the service. UTF-8 names are
+stored alongside stable IDs; a name or username is not a unique account identity.
+The index does not duplicate message bodies and does not provide SQLite FTS.
+Search continues to evaluate local JSONL messages with regular expressions.
+The component's separate `state.sqlite` stores its client binding, update state,
+and cooldown in keyed `state` rows; login authorization stays in `session.json`.
+
+If `sqlite3` is installed, list conversation names without changing records:
+
+```sh
+sqlite3 -readonly ./data-tdl/archive/index.sqlite 'SELECT peer, kind, id, name, username FROM peers ORDER BY peer;'
+```
+
+To inspect saved files and any current matching attachment metadata, open the
+same database with `sqlite3 -readonly` and run:
+
+```sql
+SELECT f.peer, f.message_id, m.file_name, f.path, f.size_bytes, f.sha256
+FROM files AS f
+LEFT JOIN media AS m
+  ON m.peer = f.peer AND m.message_id = f.message_id AND m.media_id = f.media_id
+  AND m.media_kind = f.media_kind
+WHERE f.peer = 'channel-789'
+ORDER BY f.downloaded_at DESC;
+```
+
+Replace the illustrative peer ID with one from your database. A completed file
+record remains after remote deletion or attachment replacement, so joined media
+fields may be `NULL`. The ledger records a completed download; it does not prove
+the local file still exists or has remained unchanged.
 
 ## JSONL Records
 

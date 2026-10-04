@@ -22,7 +22,7 @@ type archiveSnapshot struct {
 
 func readArchiveSnapshot(dir string) (*archiveSnapshot, error) {
 	s := &archiveSnapshot{}
-	if err := readJSON(filepath.Join(dir, "metadata.json"), &s.Meta); err != nil {
+	if err := readArchiveMeta(dir, &s.Meta); err != nil {
 		return nil, err
 	}
 	files, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
@@ -60,7 +60,7 @@ func readArchiveSnapshot(dir string) (*archiveSnapshot, error) {
 	}
 	// Archive files are replaced atomically. Re-read tombstones after opening them
 	// so a deletion committed while we scanned does not appear in search results.
-	if err := readJSON(filepath.Join(dir, "metadata.json"), &s.Meta); err != nil {
+	if err := readArchiveMeta(dir, &s.Meta); err != nil {
 		return nil, err
 	}
 	filtered := s.Records[:0]

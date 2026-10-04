@@ -73,14 +73,15 @@ func TestFetchDownloadsWithoutChangingJSONL(t *testing.T) {
 	requireOK(t, r.records([]tg.MessageClass{m}, true, 0))
 	p, _ := a.peer("user-7")
 	before := fileText(t, a, "user-7")
-	metaBefore, err := os.ReadFile(a.metaPath())
+	var metaBefore string
+	err := a.index.db.QueryRow("SELECT value_json FROM state WHERE key='archive_metadata'").Scan(&metaBefore)
 	requireOK(t, err)
 	f, calls := fakeFetcher(t, func(int) *tg.Message { return m }, []byte("pdf-data"), false)
 	result := f.download(context.Background(), a.rows["user-7"][1], p, t.TempDir(), 100)
 	if result.Status != "downloaded" || result.Size != 8 || len(result.SHA256) != 64 || *calls != 1 {
 		t.Fatalf("download failed: %+v", result)
 	}
-	if filepath.Base(result.Path) != "user-7-1-55.pdf" {
+	if filepath.Base(result.Path) != "user-7-1-document-55.pdf" {
 		t.Fatal("untrusted filename used as path")
 	}
 	b, err := os.ReadFile(result.Path)
@@ -93,9 +94,10 @@ func TestFetchDownloadsWithoutChangingJSONL(t *testing.T) {
 	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatal("unsafe attachment permissions")
 	}
-	metaAfter, err := os.ReadFile(a.metaPath())
+	var metaAfter string
+	err = a.index.db.QueryRow("SELECT value_json FROM state WHERE key='archive_metadata'").Scan(&metaAfter)
 	requireOK(t, err)
-	if before != fileText(t, a, "user-7") || !bytes.Equal(metaBefore, metaAfter) {
+	if before != fileText(t, a, "user-7") || metaBefore != metaAfter {
 		t.Fatal("fetch modified archiver files")
 	}
 }

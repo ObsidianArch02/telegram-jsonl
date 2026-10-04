@@ -5,3 +5,6 @@
 *.sh text eol=lf
 LICENSE text eol=lf
 NOTICE text eol=lf
+
+# Preserve copied upstream notices and their recorded byte hashes.
+licenses/** -text -whitespace

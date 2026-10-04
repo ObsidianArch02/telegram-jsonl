@@ -30,6 +30,22 @@ sessions are reused even when `--login` is present. Only use
 The application does not register new accounts or automatically retry failed logins.
 Ctrl-C stops the process without logging the account out.
 
+### Upgrading from JSON State
+
+This storage version does not import earlier JSON metadata or runtime state.
+Existing exports, sessions, downloads, and old state files are preserved, but old
+JSON state is not read. An old archive without its new SQLite metadata cannot
+be reopened by treating the JSONL files as a complete state database. Use fresh
+directories and log in explicitly:
+
+```sh
+./telegram-jsonl archive --data ./data-sqlite --login --history-days 7
+./telegram-jsonl fetch --archive ./data-sqlite/archive --data ./fetch-sqlite --login --pattern '(?i)\.pdf$' --limit 1
+```
+
+Do not replace or delete the earlier data directories to force an upgrade.
+The [data format](data-format.md) describes the SQLite layout and query examples.
+
 ## Runtime Logs
 
 Operational logs go to stderr with timestamps in the computer's local timezone.
@@ -169,15 +185,18 @@ JSONL directories. Their separation is checked, including resolved symlinks.
 ### 3. Read the Result
 
 ```json
-{"peer":"user-7","message_id":456,"status":"downloaded","path":"/your/project/attachments/user-7-456-9001.pdf","size_bytes":18024,"sha256":"..."}
+{"peer":"user-7","message_id":456,"status":"downloaded","path":"/your/project/attachments/user-7-456-document-9001.pdf","size_bytes":18024,"sha256":"..."}
 ```
 
 `path` is the local absolute filename; `/your/project` is illustrative.
-Files use conversation, message, and attachment IDs rather than sender-provided
+Files use conversation, message, and attachment IDs plus the media type rather than sender-provided
 paths. Successful results include bytes and SHA-256. `skipped` contains a reason
 such as deletion, protection, replacement, or exceeding the size limit.
 `error` indicates a transfer or write failure. The command exits after processing
-its matches. It does not advance archive cursors or change JSONL.
+its matches. It does not advance archive cursors or change JSONL. Each completed
+download is recorded in `archive/index.sqlite`'s `files` table. Fetch writes only
+that download ledger in the shared index; the archiver owns its other metadata.
+It also writes its own client binding and cooldown to `fetch-data/state.sqlite`.
 
 Downloading the same unchanged attachment again replaces the same local path.
 For several files, preview the intended conditions first, then increase `--limit`.
@@ -194,6 +213,10 @@ field with that value; narrow by `--peer` and preview the result.
 `--limit` is `1` to `1000`, with newest messages first. Local search can run
 alongside the archiver without taking its writer lock. Multi-conversation results
 are not a single transaction snapshot; fetch validates messages again online.
+Search reads SQLite metadata and JSONL without changing records or main database
+contents. SQLite can still create WAL/SHM coordination sidecars for a read-only
+connection. Fetch reads the same message data but requires permission to update
+the shared SQLite download ledger.
 
 Fetch defaults to `--data ./fetch-data`, output at `fetch-data/attachments`,
 `--interval 2s` (minimum `1s`), and `--max-file-bytes 268435456` (256 MiB per file).

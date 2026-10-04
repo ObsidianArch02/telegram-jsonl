@@ -25,6 +25,21 @@ Ctrl-U 清空输入，Enter 提交。
 只有确实要替换 tdl 授权时才用 `--login --tdl-relogin`。程序不注册新账户，不自动重试登录。
 Ctrl-C 仅停止进程，不主动登出账户。
 
+### 从 JSON 状态升级
+
+此存储版本不导入旧版 JSON 元数据或运行状态。
+已有导出、会话、下载文件和旧状态文件会保留，但不读取旧 JSON 状态。
+旧归档缺少新 SQLite 元数据时，不能仅凭 JSONL 文件重新打开完整状态。
+请使用新目录，并明确登录：
+
+```sh
+./telegram-jsonl archive --data ./data-sqlite --login --history-days 7
+./telegram-jsonl fetch --archive ./data-sqlite/archive --data ./fetch-sqlite --login --pattern '(?i)\.pdf$' --limit 1
+```
+
+不要覆盖或删除旧数据目录来强行升级。
+[数据格式](data-format.zh-CN.md)说明 SQLite 布局和查询例子。
+
 ## 运行日志
 
 运行日志写入 stderr，时间戳使用电脑本地时区。可在进程环境中设置
@@ -151,13 +166,16 @@ set -gx TG_API_HASH 'YOUR_APP_HASH'
 ### 3. 查看结果
 
 ```json
-{"peer":"user-7","message_id":456,"status":"downloaded","path":"/your/project/attachments/user-7-456-9001.pdf","size_bytes":18024,"sha256":"..."}
+{"peer":"user-7","message_id":456,"status":"downloaded","path":"/your/project/attachments/user-7-456-document-9001.pdf","size_bytes":18024,"sha256":"..."}
 ```
 
 `path` 是本地文件的绝对路径，`/your/project` 仅为示例。
-文件名使用会话、消息和附件 ID，不采用发送者提供的路径。
+文件名使用会话、消息和附件 ID，加上媒体类型，不采用发送者提供的路径。
 成功结果包含字节数和 SHA-256。`skipped` 附带原因，例如已删除、受保护、已替换或超过大小限制。
 `error` 表示传输或写入失败。处理完匹配后命令退出，不推进归档游标，也不修改 JSONL。
+每次完成下载都会记录在 `archive/index.sqlite` 的 `files` 表。
+下载器仅在共享索引中写下载记录，其他元数据由归档器维护。
+下载器自己的客户端绑定与等待状态写入 `fetch-data/state.sqlite`。
 
 再次下载同一个未变化附件时，会替换同一路径的本地文件。
 批量下载时先预览相同条件，再增加 `--limit`。
@@ -171,6 +189,9 @@ set -gx TG_API_HASH 'YOUR_APP_HASH'
 
 `--limit` 范围 `1` 至 `1000`，按消息时间从新到旧排序。
 本地搜索不加归档写锁，可与归档器同时运行。跨会话结果不是一个全局事务快照，下载时会再次在线验证。
+搜索只读 SQLite 元数据与 JSONL，不修改记录或主数据库内容。
+SQLite 只读连接仍可能创建 WAL/SHM 协调文件。
+下载器同样读取消息数据，但需要更新共享 SQLite 下载记录的权限。
 
 下载器默认 `--data ./fetch-data`，文件目录为 `fetch-data/attachments`，
 `--interval 2s`（最低 `1s`），`--max-file-bytes 268435456`（每文件 256 MiB）。

@@ -25,6 +25,7 @@ type protocolData struct {
 type protocolStore struct {
 	mu      sync.Mutex
 	path    string
+	store   *sqliteStore
 	data    protocolData
 	failure *failure
 }
@@ -34,13 +35,24 @@ var _ updates.ChannelAccessHasher = (*protocolStore)(nil)
 
 func openProtocolStore(path string, fail *failure) (*protocolStore, error) {
 	s := &protocolStore{path: path, failure: fail, data: protocolData{Channels: map[int64]channelState{}}}
-	if err := readJSON(path, &s.data); err != nil && !os.IsNotExist(err) {
+	store, err := openSQLite(path)
+	if err != nil {
+		return nil, err
+	}
+	s.store = store
+	if err := store.ReadJSON("updates", &s.data); err != nil && !os.IsNotExist(err) {
+		_ = store.Close()
 		return nil, err
 	}
 	if s.data.Channels == nil {
+		_ = store.Close()
 		return nil, errors.New("invalid updates state")
 	}
 	return s, nil
+}
+
+func (s *protocolStore) Close() error {
+	return s.store.Close()
 }
 
 func (s *protocolStore) bind(id int64) error {
@@ -57,7 +69,7 @@ func (s *protocolStore) save() error {
 	if err := s.failure.check(); err != nil {
 		return err
 	}
-	return s.failure.report(writeJSON(s.path, s.data))
+	return s.failure.report(s.store.WriteJSON("updates", s.data))
 }
 
 func (s *protocolStore) checkUser(id int64) error {

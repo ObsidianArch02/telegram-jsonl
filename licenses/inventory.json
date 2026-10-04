@@ -1,0 +1,251 @@
+{
+  "targets": [
+    "darwin/amd64",
+    "darwin/arm64",
+    "linux/amd64",
+    "linux/arm64",
+    "windows/amd64",
+    "windows/arm64"
+  ],
+  "dependencies": [
+    {
+      "module": "Go standard library and runtime",
+      "notices": [
+        {
+          "file": "go/LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ]
+    },
+    {
+      "module": "github.com/cenkalti/backoff/v4",
+      "version": "v4.3.0",
+      "notices": [
+        {
+          "file": "github.com/cenkalti/backoff/v4@v4.3.0/LICENSE",
+          "sha256": "5c0476add4c38b55d0ed5ac11b85e00c38f26e1caee20dfe3ab58190103d1fbc"
+        }
+      ]
+    },
+    {
+      "module": "github.com/coder/websocket",
+      "version": "v1.8.14",
+      "notices": [
+        {
+          "file": "github.com/coder/websocket@v1.8.14/LICENSE.txt",
+          "sha256": "cc0975a5f6305145bdd7b41ce9479632fdac3870e6ac4281f28017f18c767c4e"
+        }
+      ]
+    },
+    {
+      "module": "github.com/go-faster/errors",
+      "version": "v0.7.1",
+      "notices": [
+        {
+          "file": "github.com/go-faster/errors@v0.7.1/LICENSE",
+          "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+        }
+      ]
+    },
+    {
+      "module": "github.com/go-faster/jx",
+      "version": "v1.1.0",
+      "notices": [
+        {
+          "file": "github.com/go-faster/jx@v1.1.0/LICENSE",
+          "sha256": "3247931083f058b00760a3c32a9ca0962c05e4d562ad2ffcc1753451fa8d4486"
+        }
+      ]
+    },
+    {
+      "module": "github.com/go-faster/xor",
+      "version": "v1.0.0",
+      "notices": [
+        {
+          "file": "github.com/go-faster/xor@v1.0.0/LICENSE",
+          "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+        }
+      ]
+    },
+    {
+      "module": "github.com/gotd/ige",
+      "version": "v0.2.2",
+      "notices": [
+        {
+          "file": "github.com/gotd/ige@v0.2.2/LICENSE",
+          "sha256": "0f42475dcfcc51b91f0a93c40991f5c2cc6ef1412a3fba539b92615aa1d8947e"
+        }
+      ]
+    },
+    {
+      "module": "github.com/gotd/neo",
+      "version": "v0.1.5",
+      "notices": [
+        {
+          "file": "github.com/gotd/neo@v0.1.5/LICENSE",
+          "sha256": "07826e7581a2cc343e1c20f56522d52ccd61ce23556a8d390e7593b007fa3ed3"
+        }
+      ]
+    },
+    {
+      "module": "github.com/gotd/td",
+      "version": "v0.132.0",
+      "notices": [
+        {
+          "file": "github.com/gotd/td@v0.132.0/LICENSE",
+          "sha256": "1eeb0cd3ebdaf6d391806a704a97c4b0bf3714d7b33a52398345c335821e49ad"
+        }
+      ]
+    },
+    {
+      "module": "github.com/klauspost/compress",
+      "version": "v1.18.0",
+      "notices": [
+        {
+          "file": "github.com/klauspost/compress@v1.18.0/LICENSE",
+          "sha256": "0d9e582ee4bff57bf1189c9e514e6da7ce277f9cd3bc2d488b22fbb39a6d87cf"
+        }
+      ]
+    },
+    {
+      "module": "github.com/segmentio/asm",
+      "version": "v1.2.0",
+      "notices": [
+        {
+          "file": "github.com/segmentio/asm@v1.2.0/LICENSE",
+          "sha256": "e2a78de21d6d8ded2dff0f3189cd32e011630d785da127ebfbc8949012c0947b"
+        }
+      ]
+    },
+    {
+      "module": "github.com/skip2/go-qrcode",
+      "version": "v0.0.0-20200617195104-da1b6568686e",
+      "notices": [
+        {
+          "file": "github.com/skip2/go-qrcode@v0.0.0-20200617195104-da1b6568686e/LICENSE",
+          "sha256": "4cdab772de606bdf53e174b2f5d6a2c398156380ca1f763122198cece531d02c"
+        }
+      ]
+    },
+    {
+      "module": "go.etcd.io/bbolt",
+      "version": "v1.3.10",
+      "notices": [
+        {
+          "file": "go.etcd.io/bbolt@v1.3.10/LICENSE",
+          "sha256": "c15d721c37e277a11584547de6d618541501f7aa10c4e32a945a4f9ff36cb0f6"
+        }
+      ]
+    },
+    {
+      "module": "go.opentelemetry.io/otel/trace",
+      "version": "v1.38.0",
+      "notices": [
+        {
+          "file": "go.opentelemetry.io/otel/trace@v1.38.0/LICENSE",
+          "sha256": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40"
+        }
+      ]
+    },
+    {
+      "module": "go.opentelemetry.io/otel",
+      "version": "v1.38.0",
+      "notices": [
+        {
+          "file": "go.opentelemetry.io/otel@v1.38.0/LICENSE",
+          "sha256": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40"
+        }
+      ]
+    },
+    {
+      "module": "go.uber.org/atomic",
+      "version": "v1.11.0",
+      "notices": [
+        {
+          "file": "go.uber.org/atomic@v1.11.0/LICENSE.txt",
+          "sha256": "edbb5a4d165ac69376c765b551c0662ff42bea87e1f1eda85f42ac90c34b09d0"
+        }
+      ]
+    },
+    {
+      "module": "go.uber.org/multierr",
+      "version": "v1.11.0",
+      "notices": [
+        {
+          "file": "go.uber.org/multierr@v1.11.0/LICENSE.txt",
+          "sha256": "dcdabe03bef2382a130640d1c3a4cd5ec42aba1035095c38272fde694eb72405"
+        }
+      ]
+    },
+    {
+      "module": "go.uber.org/zap",
+      "version": "v1.27.0",
+      "notices": [
+        {
+          "file": "go.uber.org/zap@v1.27.0/LICENSE",
+          "sha256": "7de716e70addb64f9305298ef32a9dd68e40d5b3095a5d868ba4461404dbfbcf"
+        }
+      ]
+    },
+    {
+      "module": "golang.org/x/crypto",
+      "version": "v0.43.0",
+      "notices": [
+        {
+          "file": "golang.org/x/crypto@v0.43.0/LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ]
+    },
+    {
+      "module": "golang.org/x/net",
+      "version": "v0.46.0",
+      "notices": [
+        {
+          "file": "golang.org/x/net@v0.46.0/LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ]
+    },
+    {
+      "module": "golang.org/x/sync",
+      "version": "v0.17.0",
+      "notices": [
+        {
+          "file": "golang.org/x/sync@v0.17.0/LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ]
+    },
+    {
+      "module": "golang.org/x/sys",
+      "version": "v0.37.0",
+      "notices": [
+        {
+          "file": "golang.org/x/sys@v0.37.0/LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ]
+    },
+    {
+      "module": "golang.org/x/term",
+      "version": "v0.36.0",
+      "notices": [
+        {
+          "file": "golang.org/x/term@v0.36.0/LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ]
+    },
+    {
+      "module": "rsc.io/qr",
+      "version": "v0.2.0",
+      "notices": [
+        {
+          "file": "rsc.io/qr@v0.2.0/LICENSE",
+          "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+        }
+      ]
+    }
+  ]
+}

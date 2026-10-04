@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.go text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.sh text eol=lf
+LICENSE text eol=lf
+NOTICE text eol=lf

@@ -1,0 +1,180 @@
+# 使用文档
+
+[English](usage.md) | [简体中文](usage.zh-CN.md)
+
+[返回 README](../README.zh-CN.md)
+
+## 登录与会话
+
+`archive` 与 `fetch` 是同一个可执行文件内的两个独立组件，各自保存账户授权，
+可以并行运行。两者必须登录同一个 Telegram 账户。数据目录绑定一个账户和组件，
+账户或会话命名空间不匹配时命令停止。
+
+```sh
+./telegram-jsonl archive --data ./data-tdl --check-client
+./telegram-jsonl archive --data ./data-tdl --login
+```
+
+`--check-client` 只在本地检查集成客户端，不连接 Telegram。
+二维码登录在手机 **Telegram > 设置 > 设备 > 连接桌面设备**中扫码，请核对手机上的设备授权。
+二维码包含短期登录令牌，不要分享终端录屏。`--login-method code` 使用手机号和验证码，
+需要时还会请求两步验证密码。
+
+登录后复用同一数据目录，去掉 `--login`。即使带上 `--login`，已有有效会话也会复用。
+只有确实要替换 tdl 授权时才用 `--login --tdl-relogin`。程序不注册新账户，不自动重试登录。
+Ctrl-C 仅停止进程，不主动登出账户。
+
+### 从双二进制原型迁移
+
+升级前停止旧进程。新程序继续使用相同 `--data` 目录，无需 `tools/tdl` 或安装扩展。
+若没有 `session.json`，客户端可以从自身旧 tdl Bolt 会话中导入授权：
+`archive` 使用 `tdl-runtime/storage/local-jsonl`，`fetch` 使用 `local-fetch`。
+迁移在本地完成，保留旧会话文件，在该组件数据目录根部生成新的 `session.json`。
+
+迁移仅针对旧原型自身的数据布局，不读取 Telegram Desktop 的 `tdata` 或其他客户端授权。
+迁移后旧文件仍是账户凭证，继续妥善保护。
+
+## 配置
+
+未设置凭证环境变量时，归档器默认的 `--client auto` 选择 tdl。
+只要存在 `TG_API_ID` 或 `TG_API_HASH` 任意一个，便选择 native，且要求两者都有效。
+下载器默认 `--client tdl`，使用自有凭证下载时需明确指定 `--client native`。
+tdl 模式在源码层面移植登录集成，使用其内置应用身份，不启动辅助进程。
+Telegram 仍可能拒绝该应用身份，无法保证账户或 API 访问可用。
+
+若使用自己的应用，在 [my.telegram.org](https://my.telegram.org) 申请凭证。
+下面的环境变量命令适用于 **fish**；使用其他终端时请改用对应的环境变量导出语法：
+
+```fish
+set -gx TG_API_ID 'YOUR_APP_ID'
+set -gx TG_API_HASH 'YOUR_APP_HASH'
+./telegram-jsonl archive --client native --data ./data-native --login
+```
+
+不要将凭证放进源码、Issue、终端录屏或提交。
+
+| 归档参数 | 默认值 | 含义 |
+| --- | --- | --- |
+| `--data` | `./data-tdl` | 账户和会话状态，以及 `archive/` 目录。 |
+| `--client` | `auto` | 按环境变量选择，或明确指定 `tdl`/`native`。 |
+| `--login` | `false` | 尚未授权时允许交互登录。 |
+| `--login-method` | `qr` | 登录方式，`qr` 或 `code`。 |
+| `--tdl-relogin` | `false` | 与 `--login` 一起明确替换 tdl 授权。 |
+| `--check-client` | `false` | 本地检查集成客户端，不发起连接。 |
+| `--proxy` | 空 | 两种后端均支持 SOCKS5 代理地址。 |
+| `--interval` | `2s` | 业务 RPC 最小启动间隔，最低 `1s`。 |
+| `--batch` | `50` | 每次请求的消息或会话数，范围 `1` 至 `100`。 |
+| `--sync-every` | `6h` | 定期历史和删除核对，最低 `10m`。 |
+| `--once` | `false` | 完成一次同步后退出。 |
+| `--history-days` | `30` | 历史窗口；`0` 关闭，`-1` 请求全量。 |
+| `--history-since` | 空 | UTC 起始日期或 RFC3339 时间。 |
+
+`./telegram-jsonl archive --help`、`search --help`、`fetch --help`
+列出所用版本实际接受的参数。不带子命令时保留旧版 `archive` 行为。
+
+### 历史窗口
+
+```sh
+./telegram-jsonl archive --data ./data-tdl --history-days 7
+./telegram-jsonl archive --data ./data-tdl --history-days 0
+./telegram-jsonl archive --data ./data-tdl --history-since 2026-09-01
+```
+
+窗口在进程启动时固定，包含恰好在起点的消息。`YYYY-MM-DD` 按 UTC 零点解释，
+需要明确时区时用 RFC3339。不能同时显式指定 `--history-days` 和 `--history-since`。
+分页到达更早消息后停止，边界请求可能返回早期记录，但不会将它们保存。
+窗口内不设总条数上限。扩大窗口会重置此前的历史扫描进度，缩小窗口不会清除已有记录。
+
+该设置限制历史分页，不是保留期限。实时更新和差分恢复仍会运行，也可能带回更早的消息。
+已有记录继续核对编辑和删除。`FLOOD_WAIT` 等待截止时间会持久化，重启不会绕过等待。
+
+## 搜索并下载一份 PDF
+
+假设归档器使用 `--data ./data-tdl` 持续运行，你要下载收到的 `invoice.pdf`。
+在可执行文件所在目录另开一个终端即可。
+
+### 1. 预览本地匹配
+
+```sh
+./telegram-jsonl search --archive ./data-tdl/archive --pattern '(?i)\.pdf$' --limit 5
+```
+
+这一步完全离线，不会下载文件。`(?i)` 表示忽略大小写，`\.pdf$` 匹配 `.pdf` 结尾的文件名。
+结果每行一个 JSON 对象。下面展开并省略部分字段以便阅读：
+
+```json
+{
+  "peer": "user-7",
+  "message_id": 456,
+  "text": "本月账单",
+  "media": {
+    "kind": "document",
+    "file": {"id": "9001", "name": "invoice.pdf", "mime_type": "application/pdf", "size_bytes": 18024}
+  }
+}
+```
+
+`peer` 是会话标识，`media.file.name` 是收到的原文件名。
+这些字段描述附件，不代表文件已经下载。
+
+### 2. 下载选中的匹配
+
+将 `user-7` 替换为预览结果中的真实会话：
+
+```sh
+./telegram-jsonl fetch \
+  --archive ./data-tdl/archive \
+  --data ./fetch-data \
+  --peer user-7 \
+  --pattern '^invoice\.pdf$' \
+  --limit 1 \
+  --output ./attachments \
+  --login
+```
+
+| 参数 | 本例效果 |
+| --- | --- |
+| `--archive` | 读取归档器的 JSONL 匹配，不改写它。 |
+| `--data ./fetch-data` | 保存下载器自己的独立会话。 |
+| `--peer user-7` | 只搜索选定会话。 |
+| `--pattern` | 匹配文件名；同一正则也会检查其他字段。 |
+| `--limit 1` | 只处理最新一条匹配消息。 |
+| `--output` | 将附件保存到 `./attachments`。 |
+| `--login` | 允许下载器首次登录同一账户。 |
+
+即使归档器已登录，下载器仍需要独立的首次授权。
+之后复用 `./fetch-data`，去掉 `--login`。
+下载器状态和输出目录必须与归档器状态及 JSONL 目录分开，程序会检查该关系，包括解析符号链接。
+
+### 3. 查看结果
+
+```json
+{"peer":"user-7","message_id":456,"status":"downloaded","path":"/your/project/attachments/user-7-456-9001.pdf","size_bytes":18024,"sha256":"..."}
+```
+
+`path` 是本地文件的绝对路径，`/your/project` 仅为示例。
+文件名使用会话、消息和附件 ID，不采用发送者提供的路径。
+成功结果包含字节数和 SHA-256。`skipped` 附带原因，例如已删除、受保护、已替换或超过大小限制。
+`error` 表示传输或写入失败。处理完匹配后命令退出，不推进归档游标，也不修改 JSONL。
+
+再次下载同一个未变化附件时，会替换同一路径的本地文件。
+批量下载时先预览相同条件，再增加 `--limit`。
+保存后的文件是主动留存的本地副本，没有进程监测并同步之后的远端删除，详见[生命周期限制](limitations.zh-CN.md)。
+
+## 搜索与下载选项
+
+正则使用 Go/RE2 语法，检查正文、消息与会话 ID、媒体类型、文件名、MIME、
+音频标题与演唱者、投票问题与选项，以及结构化信息 JSON。
+`^456$` 等 ID 正则也可能匹配其他同值字段，请配合 `--peer` 并先预览。
+
+`--limit` 范围 `1` 至 `1000`，按消息时间从新到旧排序。
+本地搜索不加归档写锁，可与归档器同时运行。跨会话结果不是一个全局事务快照，下载时会再次在线验证。
+
+下载器默认 `--data ./fetch-data`，文件目录为 `fetch-data/attachments`，
+`--interval 2s`（最低 `1s`），`--max-file-bytes 268435456`（每文件 256 MiB）。
+大小限制接受 `1` 字节至 `10` GiB。下载顺序执行，单独持久化 `FLOOD_WAIT` 等待状态。
+支持图片与文档类附件，包括语音、视频、音乐、贴纸和动画，不访问网页预览的第三方 URL。
+
+下载前重新读取原消息和保护状态，通过 Telegram 授权接口取得新鲜文件引用，
+完成后再次核对消息，再提交文件。引用过期最多刷新一次。
+失败或正常中断时尽可能清理部分文件；强制杀死进程可能在输出目录留下 `.fetch-*` 文件。

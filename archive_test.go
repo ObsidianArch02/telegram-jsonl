@@ -32,11 +32,11 @@ func fixture(t *testing.T) (*archive, *receiver) {
 	requireOK(t, err)
 	t.Cleanup(func() { _ = a.Close() })
 	requireOK(t, a.bind(42))
-	s, err := openProtocolStore(filepath.Join(t.TempDir(), "state.sqlite"), fail)
+	s, err := openProtocolStore(a.metaPath(), fail)
 	requireOK(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 	requireOK(t, s.bind(42))
-	return a, &receiver{archive: a, protocol: s, self: 42, batch: 2, failure: fail, resync: make(chan struct{}, 1)}
+	return a, &receiver{archive: a, protocol: s, self: 42, batch: 2, failure: fail, resync: make(chan struct{}, 1), reconcileWindow: -1}
 }
 
 func row(peer string, id int, text string) Record {
@@ -85,7 +85,7 @@ func TestEditDeleteRestartAndStaleFetch(t *testing.T) {
 		t.Fatal("deleted content resurrected")
 	}
 	var metadata string
-	err = a.index.db.QueryRow("SELECT value_json FROM state WHERE key='archive_metadata'").Scan(&metadata)
+	err = a.state.db.QueryRow("SELECT value_json FROM state WHERE key='archive_metadata'").Scan(&metadata)
 	requireOK(t, err)
 	if strings.Contains(metadata, "body") {
 		t.Fatal("tombstone contains body")

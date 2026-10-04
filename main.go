@@ -94,6 +94,7 @@ func runArchive(args []string) error {
 	proxyAddress := fs.String("proxy", "", "SOCKS5 proxy URL")
 	historyDays := fs.Int("history-days", 30, "history lookback in days; 0 disables backfill, -1 enables all history")
 	historySince := fs.String("history-since", "", "history start: YYYY-MM-DD (UTC) or RFC3339; overrides default 30 days")
+	reconcileWindowText := fs.String("reconcile-window", "1h", "edit/deletion reconciliation lookback; duration or all")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -110,6 +111,10 @@ func runArchive(args []string) error {
 		}
 	})
 	historyPolicy, err := parseHistoryConfig(*historyDays, *historySince, daysExplicit, time.Now())
+	if err != nil {
+		return err
+	}
+	reconcileWindow, err := parseReconcileWindow(*reconcileWindowText)
 	if err != nil {
 		return err
 	}
@@ -169,7 +174,7 @@ func runArchive(args []string) error {
 		return err
 	}
 	defer gate.Close()
-	r := &receiver{archive: store, protocol: protocol, batch: *batch, failure: fail, resync: make(chan struct{}, 1), historyPolicy: historyPolicy}
+	r := &receiver{archive: store, protocol: protocol, batch: *batch, failure: fail, resync: make(chan struct{}, 1), historyPolicy: historyPolicy, reconcileWindow: reconcileWindow}
 	manager := updates.New(updates.Config{Handler: r.handler(), Storage: protocol, AccessHasher: protocol, OnChannelTooLong: func(id int64) {
 		log.Printf("Update gap for channel-%d; scheduling history reconciliation", id)
 		select {
@@ -178,16 +183,33 @@ func runArchive(args []string) error {
 		}
 	}})
 	var enabled atomic.Bool
+	var bound atomic.Bool
 	sessionStorage, err := sourceStorage(*data, cfg, fail, *relogin)
 	if err != nil {
 		return err
 	}
 	loginDispatcher := tg.NewUpdateDispatcher()
 	tokens := qrlogin.OnLoginToken(loginDispatcher)
+	// Difference responses are persisted through the archive handler before the
+	// upstream update manager is allowed to advance its protocol cursor.
+	clientOptions := []telegram.Middleware{gate, &reliableDifferenceMiddleware{
+		active:  func() bool { return bound.Load() },
+		handler: r.handler(),
+		requestRepair: func(ctx context.Context, peer string) error {
+			if err := store.requestRepair(peer); err != nil {
+				return fail.report(err)
+			}
+			select {
+			case r.resync <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+	}}
 	client := telegram.NewClient(cfg.APIID, cfg.APIHash, telegram.Options{
 		SessionStorage: sessionStorage,
 		Resolver:       resolver,
-		Middlewares:    []telegram.Middleware{gate},
+		Middlewares:    clientOptions,
 		UpdateHandler: updateHandlerFunc(func(ctx context.Context, u tg.UpdatesClass) error {
 			if err := loginDispatcher.Handle(ctx, u); err != nil {
 				return err
@@ -210,13 +232,14 @@ func runArchive(args []string) error {
 		}
 		r.self = status.User.ID
 		r.api = client.API()
-		log.Printf("History backfill: %s", historyPolicy)
+		log.Printf("History backfill: %s; reconciliation window=%s", historyPolicy, *reconcileWindowText)
 		if err := store.bind(r.self); err != nil {
 			return err
 		}
 		if err := protocol.bind(r.self); err != nil {
 			return err
 		}
+		bound.Store(true)
 		runCtx, finish := context.WithCancel(ctx)
 		defer finish()
 		group, gctx := errgroup.WithContext(runCtx)

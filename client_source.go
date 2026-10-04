@@ -59,7 +59,19 @@ func resolveSourceConfig(mode, namespace string) (sourceConfig, error) {
 }
 
 func sourceStorage(dataDir string, c sourceConfig, fail *failure, reset bool) (*stableSession, error) {
-	store, err := openSQLite(filepath.Join(dataDir, "state.sqlite"))
+	otherNamespace := fetchNamespace
+	if c.Namespace == fetchNamespace {
+		otherNamespace = hostNamespace
+	}
+	var other clientIdentity
+	err := readPropertyJSON(clientAttributesPath(dataDir, otherNamespace), "client", &other)
+	if err == nil {
+		return nil, errors.New("session directory belongs to a different client identity or component")
+	}
+	if !os.IsNotExist(err) {
+		return nil, err
+	}
+	store, err := openSQLite(clientAttributesPath(dataDir, c.Namespace))
 	if err != nil {
 		return nil, err
 	}
@@ -81,8 +93,10 @@ func sourceStorage(dataDir string, c sourceConfig, fail *failure, reset bool) (*
 			return nil, sessionErr
 		}
 	}
-	if err := store.WriteJSON("client", c.clientIdentity); err != nil {
-		return nil, err
+	if os.IsNotExist(err) {
+		if err := store.WriteJSON("client", c.clientIdentity); err != nil {
+			return nil, err
+		}
 	}
 	return &stableSession{path: filepath.Join(dataDir, "session.json"), failure: fail, ignoreExisting: reset}, nil
 }
@@ -155,6 +169,13 @@ func tdlResolver(address string) (dcs.Resolver, error) {
 
 func currentSessionIdentity(dataDir string) (clientIdentity, error) {
 	var c clientIdentity
-	err := readStateJSON(filepath.Join(dataDir, "state.sqlite"), "client", &c)
+	err := readPropertyJSON(clientAttributesPath(dataDir, hostNamespace), "client", &c)
 	return c, err
+}
+
+func clientAttributesPath(dataDir, namespace string) string {
+	if namespace == fetchNamespace {
+		return filepath.Join(dataDir, "attributes.sqlite")
+	}
+	return filepath.Join(dataDir, "archive", "index.sqlite")
 }

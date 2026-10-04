@@ -25,7 +25,7 @@ type rpcGate struct {
 
 func openGate(path string, interval time.Duration, fail *failure) (*rpcGate, error) {
 	g := &rpcGate{path: path, interval: interval, failure: fail}
-	store, err := openSQLite(path)
+	store, err := openStateSQLite(path)
 	if err != nil {
 		return nil, err
 	}

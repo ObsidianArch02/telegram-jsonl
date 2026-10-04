@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/gotd/td/session"
@@ -11,9 +14,8 @@ import (
 )
 
 type channelState struct {
-	Pts        int   `json:"pts"`
-	HasPts     bool  `json:"has_pts"`
-	AccessHash int64 `json:"access_hash"`
+	Pts    int  `json:"pts"`
+	HasPts bool `json:"has_pts"`
 }
 
 type protocolData struct {
@@ -26,6 +28,7 @@ type protocolStore struct {
 	mu      sync.Mutex
 	path    string
 	store   *sqliteStore
+	index   *sqliteStore
 	data    protocolData
 	failure *failure
 }
@@ -35,24 +38,29 @@ var _ updates.ChannelAccessHasher = (*protocolStore)(nil)
 
 func openProtocolStore(path string, fail *failure) (*protocolStore, error) {
 	s := &protocolStore{path: path, failure: fail, data: protocolData{Channels: map[int64]channelState{}}}
-	store, err := openSQLite(path)
+	store, err := openStateSQLite(path)
 	if err != nil {
 		return nil, err
 	}
 	s.store = store
+	s.index, err = openSQLite(filepath.Join(filepath.Dir(path), "archive", "index.sqlite"))
+	if err != nil {
+		store.Close()
+		return nil, err
+	}
 	if err := store.ReadJSON("updates", &s.data); err != nil && !os.IsNotExist(err) {
-		_ = store.Close()
+		_ = s.Close()
 		return nil, err
 	}
 	if s.data.Channels == nil {
-		_ = store.Close()
+		_ = s.Close()
 		return nil, errors.New("invalid updates state")
 	}
 	return s, nil
 }
 
 func (s *protocolStore) Close() error {
-	return s.store.Close()
+	return errors.Join(s.store.Close(), s.index.Close())
 }
 
 func (s *protocolStore) bind(id int64) error {
@@ -183,13 +191,15 @@ func (s *protocolStore) SetChannelAccessHash(_ context.Context, id, ch, hash int
 	if hash == 0 {
 		return nil
 	}
-	c := s.data.Channels[ch]
-	if c.AccessHash == hash {
+	var meta archiveMeta
+	err := s.store.ReadJSON("archive_metadata", &meta)
+	if err != nil && !os.IsNotExist(err) {
+		return s.failure.report(err)
+	}
+	if meta.Blocked[fmt.Sprintf("channel-%d", ch)] != "" {
 		return nil
 	}
-	c.AccessHash = hash
-	s.data.Channels[ch] = c
-	return s.save()
+	return s.failure.report(s.index.UpsertPeer(fmt.Sprintf("channel-%d", ch), PeerInfo{Kind: "channel", ID: ch, AccessHash: hash}, false))
 }
 
 func (s *protocolStore) GetChannelAccessHash(_ context.Context, id, ch int64) (int64, bool, error) {
@@ -198,8 +208,12 @@ func (s *protocolStore) GetChannelAccessHash(_ context.Context, id, ch int64) (i
 	if err := s.checkUser(id); err != nil {
 		return 0, false, err
 	}
-	c := s.data.Channels[ch]
-	return c.AccessHash, c.AccessHash != 0, nil
+	var hash int64
+	err := s.index.db.QueryRow("SELECT access_hash FROM peers WHERE peer=?", fmt.Sprintf("channel-%d", ch)).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	return hash, hash != 0, err
 }
 
 type stableSession struct {

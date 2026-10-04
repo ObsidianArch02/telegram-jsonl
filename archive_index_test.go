@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gotd/td/tg"
@@ -59,12 +60,13 @@ func TestArchiveIndexTracksMediaEditsDeletionsAndRestart(t *testing.T) {
 	}
 	_, err := a.index.db.Exec("DELETE FROM media")
 	requireOK(t, err)
+	requireOK(t, a.state.WriteJSON("jsonl_intent:user-7", jsonlIntent{ExpectedSHA256: strings.Repeat("0", 64)}))
 	reopened, err := openArchive(a.dir, &failure{})
 	requireOK(t, err)
 	defer reopened.Close()
 	requireOK(t, reopened.index.db.QueryRow("SELECT media_id FROM media WHERE peer='user-7' AND message_id=1").Scan(&mediaID))
 	if mediaID != "55" {
-		t.Fatal("restart did not rebuild the index from JSONL")
+		t.Fatal("restart did not repair an interrupted media projection from JSONL")
 	}
 	requireOK(t, r.records([]tg.MessageClass{message(&tg.PeerUser{UserID: 7}, 1, "replacement-text")}, true, 0))
 	var count int

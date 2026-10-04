@@ -101,23 +101,26 @@ func TestSQLitePeerNamesAndMetadataStaySeparate(t *testing.T) {
 	if err := s.UpsertPeer("channel-1", p, true); err == nil {
 		t.Fatal("accepted mismatched peer")
 	}
-	meta := archiveMeta{AccountID: 42, Peers: map[string]PeerInfo{"channel-2632177660": p}}
-	if err := s.WriteJSON("archive_metadata", meta); err != nil {
+	if err := s.WriteJSON("archive_account", int64(42)); err != nil {
 		t.Fatal(err)
 	}
-	var out archiveMeta
-	if err := s.ReadJSON("archive_metadata", &out); err != nil {
+	var accountID int64
+	if err := s.ReadJSON("archive_account", &accountID); err != nil {
 		t.Fatal(err)
 	}
-	if out.AccountID != 42 || out.Peers["channel-2632177660"].AccessHash != p.AccessHash {
-		t.Fatal("internal account or peer state did not round-trip")
+	props, err := s.PeerProperties()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accountID != 42 || props["channel-2632177660"].AccessHash != p.AccessHash {
+		t.Fatal("account binding or peer properties did not round-trip")
 	}
 }
 
 func TestSQLiteMediaEditsDeletesAndCompletedFiles(t *testing.T) {
 	s, _ := testSQLite(t)
 	peer := "channel-123"
-	if err := s.WriteJSON("archive_metadata", archiveMeta{AccountID: 42}); err != nil {
+	if err := s.WriteJSON("archive_account", int64(42)); err != nil {
 		t.Fatal(err)
 	}
 	r := Record{AccountID: 42, Peer: peer, MessageID: 1, Text: "private message body", Media: &MediaDetails{Kind: "document", File: &FileMetadata{ID: "111", Name: "sample.pdf", MIME: "application/pdf", Size: 20, Title: "private caption"}}}
@@ -180,7 +183,7 @@ func TestSQLiteMediaEditsDeletesAndCompletedFiles(t *testing.T) {
 		t.Fatal("photo and document numeric ID collision lost completed file association")
 	}
 	var schema string
-	rows, err := s.db.Query("SELECT sql FROM sqlite_master WHERE type='table'")
+	rows, err := s.db.Query("SELECT sql FROM sqlite_master WHERE name IN ('media','files')")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +226,7 @@ func TestSQLiteDownloadAccountBinding(t *testing.T) {
 	if err := s.RecordDownload(r, "1", result); err == nil {
 		t.Fatal("recorded download in an unbound archive")
 	}
-	if err := s.WriteJSON("archive_metadata", archiveMeta{AccountID: 99}); err != nil {
+	if err := s.WriteJSON("archive_account", int64(99)); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.RecordDownload(r, "1", result); err == nil {
@@ -260,13 +263,16 @@ func TestSQLiteConcurrentHandles(t *testing.T) {
 	for err := range errors {
 		t.Fatal(err)
 	}
-	if sqliteCount(t, s, "state") != 40 {
+	if sqliteCount(t, s, "properties") != 40 {
 		t.Fatal("concurrent handles lost state")
 	}
 }
 
 func TestSQLiteIgnoresRetiredJSON(t *testing.T) {
-	dir := t.TempDir()
+	dir := filepath.Join(t.TempDir(), "archive")
+	if err := privateDir(dir); err != nil {
+		t.Fatal(err)
+	}
 	legacy := filepath.Join(dir, "metadata.json")
 	data := []byte(`{"account_id":999}`)
 	if err := os.WriteFile(legacy, data, 0600); err != nil {
@@ -276,7 +282,17 @@ func TestSQLiteIgnoresRetiredJSON(t *testing.T) {
 	if err := readArchiveMeta(dir, &meta); !os.IsNotExist(err) {
 		t.Fatalf("used retired JSON metadata: %v", err)
 	}
-	if err := writeStateJSON(filepath.Join(dir, "index.sqlite"), "archive_metadata", archiveMeta{AccountID: 123}); err != nil {
+	if err := writeStateJSON(filepath.Join(filepath.Dir(dir), "state.sqlite"), "archive_metadata", archiveMeta{AccountID: 123}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := openSQLite(filepath.Join(dir, "index.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.WriteJSON("archive_account", int64(123)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := readArchiveMeta(dir, &meta); err != nil || meta.AccountID != 123 {
@@ -328,7 +344,7 @@ func TestSQLitePermissionsAndSymlinks(t *testing.T) {
 
 func TestSQLiteFutureSchemaRejected(t *testing.T) {
 	s, path := testSQLite(t)
-	if _, err := s.db.Exec("PRAGMA user_version=2"); err != nil {
+	if _, err := s.db.Exec("PRAGMA user_version=3"); err != nil {
 		t.Fatal(err)
 	}
 	if opened, err := openSQLite(path); err == nil {
@@ -339,7 +355,7 @@ func TestSQLiteFutureSchemaRejected(t *testing.T) {
 		t.Fatalf("future schema read: %v", err)
 	}
 	var version int
-	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 2 {
+	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 3 {
 		t.Fatalf("changed unsupported schema: %d, %v", version, err)
 	}
 }

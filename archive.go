@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,7 +48,7 @@ type PeerInfo struct {
 }
 
 type archiveMeta struct {
-	AccountID         int64                   `json:"account_id"`
+	AccountID         int64                   `json:"account_ref"`
 	Peers             map[string]PeerInfo     `json:"peers"`
 	Deleted           map[string]map[int]bool `json:"deleted"`
 	NonChannelDeleted map[int]bool            `json:"non_channel_deleted"`
@@ -62,6 +64,7 @@ type archive struct {
 	versions   map[string]map[int]uint64
 	failure    *failure
 	index      *sqliteStore
+	state      *sqliteStore
 }
 
 var validPeer = regexp.MustCompile(`^(user|chat|channel)-[1-9][0-9]*$`)
@@ -81,17 +84,22 @@ func openArchive(dir string, fail *failure) (*archive, error) {
 	} else if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	a.index, err = openSQLite(a.metaPath())
+	a.index, err = openSQLite(filepath.Join(dir, "index.sqlite"))
 	if err != nil {
+		return nil, err
+	}
+	a.state, err = openStateSQLite(a.metaPath())
+	if err != nil {
+		a.index.Close()
 		return nil, err
 	}
 	opened := false
 	defer func() {
 		if !opened {
-			_ = a.index.Close()
+			_ = a.Close()
 		}
 	}()
-	err = a.index.ReadJSON("archive_metadata", &a.meta)
+	err = a.state.ReadJSON("archive_metadata", &a.meta)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
@@ -100,6 +108,15 @@ func openArchive(dir string, fail *failure) (*archive, error) {
 	}
 	if a.meta.Peers == nil || a.meta.Deleted == nil || a.meta.NonChannelDeleted == nil || a.meta.Blocked == nil {
 		return nil, errors.New("invalid archive metadata")
+	}
+	if err == nil {
+		if err := joinArchiveProperties(a.index, &a.meta); err != nil {
+			return nil, err
+		}
+	}
+	dirty, err := a.pendingIntents()
+	if err != nil {
+		return nil, err
 	}
 	// A crash can leave an unfinished replacement containing an old message body.
 	temps, err := filepath.Glob(filepath.Join(dir, ".write-*"))
@@ -155,6 +172,21 @@ func openArchive(dir string, fail *failure) (*archive, error) {
 			if err := a.flush(peer); err != nil {
 				return nil, err
 			}
+			delete(dirty, peer)
+		}
+	}
+	// Only interrupted replacements need projection recovery; clean properties
+	// are not rewritten when the daemon starts.
+	for key := range dirty {
+		if a.meta.Blocked[key] != "" {
+			if err := a.index.RemovePeer(key); err != nil {
+				return nil, err
+			}
+		} else if err := a.index.SyncMessages(key, a.rows[key]); err != nil {
+			return nil, err
+		}
+		if err := a.clearIntent(key); err != nil {
+			return nil, err
 		}
 	}
 	for key := range a.meta.Blocked {
@@ -162,25 +194,27 @@ func openArchive(dir string, fail *failure) (*archive, error) {
 			return nil, err
 		}
 	}
-	for key, p := range a.meta.Peers {
-		if a.meta.Blocked[key] != "" {
-			continue
-		}
-		if err := a.index.UpsertPeer(key, p, true); err != nil {
-			return nil, err
-		}
-		if err := a.index.SyncMessages(key, a.rows[key]); err != nil {
-			return nil, err
-		}
-	}
 	opened = true
 	return a, nil
 }
 
-func (a *archive) Close() error     { return a.index.Close() }
-func (a *archive) metaPath() string { return filepath.Join(a.dir, "index.sqlite") }
+func (a *archive) Close() error { return errors.Join(a.state.Close(), a.index.Close()) }
+func (a *archive) metaPath() string {
+	return filepath.Join(filepath.Dir(a.dir), "state.sqlite")
+}
+
+func (a *archive) hotMeta() archiveMeta {
+	m := a.meta
+	m.Peers = make(map[string]PeerInfo, len(a.meta.Peers))
+	for key, p := range a.meta.Peers {
+		p.Name, p.Username, p.AccessHash = "", "", 0
+		m.Peers[key] = p
+	}
+	return m
+}
+
 func (a *archive) saveMeta() error {
-	return a.failure.report(a.index.WriteJSON("archive_metadata", a.meta))
+	return a.failure.report(a.state.WriteJSON("archive_metadata", a.hotMeta()))
 }
 func (a *archive) excluded(peer string, id int) bool {
 	return a.meta.Blocked[peer] != "" || a.meta.Deleted[peer][id] || (!strings.HasPrefix(peer, "channel-") && a.meta.NonChannelDeleted[id])
@@ -192,7 +226,18 @@ func (a *archive) bind(accountID int64) error {
 	if a.meta.AccountID != 0 && a.meta.AccountID != accountID {
 		return errors.New("data directory belongs to a different account")
 	}
+	var bound int64
+	err := a.index.ReadJSON("archive_account", &bound)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err == nil && bound != accountID {
+		return errors.New("archive attributes belong to a different account")
+	}
 	a.meta.AccountID = accountID
+	if err := a.failure.report(a.index.WriteJSON("archive_account", accountID)); err != nil {
+		return err
+	}
 	return a.saveMeta()
 }
 
@@ -218,13 +263,13 @@ func (a *archive) register(key string, p PeerInfo) error {
 		return nil
 	}
 	a.meta.Peers[key] = p
-	if err := a.saveMeta(); err != nil {
+	if a.meta.Blocked[key] != "" {
+		return a.saveMeta()
+	}
+	if err := a.failure.report(a.index.UpsertPeer(key, p, true)); err != nil {
 		return err
 	}
-	if a.meta.Blocked[key] != "" {
-		return nil
-	}
-	return a.failure.report(a.index.UpsertPeer(key, p, true))
+	return a.saveMeta()
 }
 
 func (a *archive) observePeer(key string, p PeerInfo) error {
@@ -323,10 +368,55 @@ func (a *archive) flush(peer string) error {
 			return a.failure.report(err)
 		}
 	}
+	sum := sha256.Sum256(b.Bytes())
+	if err := a.failure.report(a.state.WriteJSON("jsonl_intent:"+peer, jsonlIntent{ExpectedSHA256: hex.EncodeToString(sum[:])})); err != nil {
+		return err
+	}
 	if err := a.failure.report(atomicWrite(filepath.Join(a.dir, peer+".jsonl"), b.Bytes())); err != nil {
 		return err
 	}
-	return a.failure.report(a.index.SyncMessages(peer, a.rows[peer]))
+	if err := a.failure.report(a.index.SyncMessages(peer, a.rows[peer])); err != nil {
+		return err
+	}
+	return a.clearIntent(peer)
+}
+
+type jsonlIntent struct {
+	ExpectedSHA256 string `json:"expected_sha256"`
+}
+
+func (a *archive) pendingIntents() (map[string]jsonlIntent, error) {
+	rows, err := a.state.db.Query("SELECT key,value_json FROM state WHERE key LIKE 'jsonl_intent:%'")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]jsonlIntent)
+	for rows.Next() {
+		var key string
+		var value []byte
+		if err := rows.Scan(&key, &value); err != nil {
+			return nil, err
+		}
+		peer := strings.TrimPrefix(key, "jsonl_intent:")
+		var intent jsonlIntent
+		if err := json.Unmarshal(value, &intent); err != nil {
+			return nil, errors.New("invalid JSONL replacement receipt")
+		}
+		digest, err := hex.DecodeString(intent.ExpectedSHA256)
+		if !validPeer.MatchString(peer) || len(digest) != sha256.Size || err != nil {
+			return nil, errors.New("invalid JSONL replacement receipt")
+		}
+		if _, ok := a.meta.Peers[peer]; !ok {
+			return nil, errors.New("replacement receipt has no peer metadata")
+		}
+		out[peer] = intent
+	}
+	return out, rows.Err()
+}
+
+func (a *archive) clearIntent(peer string) error {
+	return a.failure.report(a.state.WriteJSONBatch(nil, []string{"jsonl_intent:" + peer}))
 }
 
 func (a *archive) touch(peer string, id int) {

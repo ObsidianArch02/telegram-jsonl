@@ -57,7 +57,7 @@ func TestComponentSQLitePersistsIndependentRuntimeKeys(t *testing.T) {
 		t.Fatal("runtime state overwrote the client identity")
 	}
 	var stored string
-	requireOK(t, protocol.store.db.QueryRow("SELECT value_json FROM state WHERE key='client'").Scan(&stored))
+	requireOK(t, protocol.index.db.QueryRow("SELECT value_json FROM properties WHERE key='client'").Scan(&stored))
 	if strings.Contains(stored, c.APIHash) || strings.Contains(stored, "auth_key") {
 		t.Fatal("client state includes credentials or authorization")
 	}
@@ -110,7 +110,7 @@ func TestComponentSQLiteRejectsUnboundExistingSession(t *testing.T) {
 		t.Fatal("existing authorization was silently rebound")
 	}
 	var identity clientIdentity
-	if err := readStateJSON(filepath.Join(dir, "state.sqlite"), "client", &identity); !errors.Is(err, os.ErrNotExist) {
+	if err := readPropertyJSON(clientAttributesPath(dir, hostNamespace), "client", &identity); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("rejected authorization wrote client state")
 	}
 	b, err := os.ReadFile(filepath.Join(dir, "session.json"))
@@ -125,7 +125,7 @@ func componentCatalog(t *testing.T, accountID int64) *sqliteStore {
 	catalog, err := openSQLite(filepath.Join(t.TempDir(), "index.sqlite"))
 	requireOK(t, err)
 	t.Cleanup(func() { _ = catalog.Close() })
-	requireOK(t, catalog.WriteJSON("archive_metadata", archiveMeta{AccountID: accountID}))
+	requireOK(t, catalog.WriteJSON("archive_account", accountID))
 	return catalog
 }
 

@@ -535,11 +535,11 @@ func runFetch(args []string) error {
 			return err
 		}
 		defer catalog.Close()
-		var liveMeta archiveMeta
-		if err := catalog.ReadJSON("archive_metadata", &liveMeta); err != nil {
+		var archiveAccount int64
+		if err := catalog.ReadJSON("archive_account", &archiveAccount); err != nil {
 			return err
 		}
-		if liveMeta.AccountID != status.User.ID {
+		if archiveAccount != status.User.ID {
 			return errors.New("archive account changed before attachment download")
 		}
 		runner := &fetchRunner{api: client.API(), catalog: catalog, fileClient: func(ctx context.Context, dc int) (downloader.Client, func(), error) {

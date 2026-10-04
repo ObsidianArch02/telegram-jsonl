@@ -22,16 +22,18 @@ type updateHandlerFunc func(context.Context, tg.UpdatesClass) error
 func (f updateHandlerFunc) Handle(ctx context.Context, u tg.UpdatesClass) error { return f(ctx, u) }
 
 type receiver struct {
-	archive       *archive
-	protocol      *protocolStore
-	self          int64
-	api           *tg.Client
-	batch         int
-	failure       *failure
-	resync        chan struct{}
-	entitiesMu    sync.Mutex
-	entities      map[string]PeerInfo
-	historyPolicy historyConfig
+	archive         *archive
+	protocol        *protocolStore
+	self            int64
+	api             *tg.Client
+	batch           int
+	failure         *failure
+	resync          chan struct{}
+	entitiesMu      sync.Mutex
+	entities        map[string]PeerInfo
+	historyPolicy   historyConfig
+	reconcileWindow time.Duration
+	cycleStarted    time.Time
 }
 
 func peerKey(p tg.PeerClass) string {
@@ -146,7 +148,7 @@ func (r *receiver) observe(users []tg.UserClass, chats []tg.ChatClass) error {
 			if err := r.remember(key, PeerInfo{Kind: "channel", ID: c.ID, Name: name, Username: username, AccessHash: hash}); err != nil {
 				return err
 			}
-			if !c.Min && hash != 0 {
+			if !c.Min && hash != 0 && !r.archive.blocked(key) {
 				if err := r.protocol.SetChannelAccessHash(context.Background(), r.self, c.ID, hash); err != nil {
 					return err
 				}
@@ -382,11 +384,18 @@ func (r *receiver) discover(ctx context.Context) error {
 }
 
 func (r *receiver) reconcile(ctx context.Context, key string, p PeerInfo) error {
-	ids := r.archive.ids(key)
-	if len(ids) > 0 {
-		log.Printf("Checking archived messages: peer=%s records=%d", key, len(ids))
+	if r.reconcileWindow == 0 {
+		return nil
 	}
-	for start := 0; start < len(ids); start += r.batch {
+	job, err := r.openReconciliationJob(key)
+	if err != nil {
+		return err
+	}
+	ids := job.IDs
+	if len(ids) > 0 {
+		log.Printf("Checking archived messages: peer=%s records=%d resumed_at=%d", key, len(ids), job.Position)
+	}
+	for start := job.Position; start < len(ids); start += r.batch {
 		if r.archive.blocked(key) {
 			return nil
 		}
@@ -432,27 +441,34 @@ func (r *receiver) reconcile(ctx context.Context, key string, p PeerInfo) error 
 		if err := r.records(messages.GetMessages(), false, fence); err != nil {
 			return err
 		}
+		job.Position = end
+		if err := r.archive.saveJob(syncJobKey("reconcile", key), job); err != nil {
+			return err
+		}
 		log.Printf("Reconciliation progress: peer=%s checked=%d/%d missing=%d", key, end, len(ids), len(deleted))
 	}
 	return nil
 }
 
-// Incremental scans commit their high-water mark only after the entire range is read.
+// Each page persists its position; the completed watermark advances after the range.
 func (r *receiver) history(ctx context.Context, key string, p PeerInfo, incremental bool) error {
 	if r.historyPolicy.Disabled {
 		return nil
 	}
-	offset, minID, newest := p.Offset, 0, p.Newest
-	if incremental {
-		offset = 0
-		minID = p.Newest
+	job, err := r.openHistoryJob(key, p, incremental)
+	if err != nil {
+		return err
 	}
+	if job.Done {
+		return nil
+	}
+	offset, minID, newest := job.Offset, job.MinID, job.Newest
 	mode := "backfill"
 	if incremental {
 		mode = "catchup"
 	}
 	log.Printf("History scan started: peer=%s mode=%s offset=%d min_id=%d", key, mode, offset, minID)
-	pages, scanned := 0, 0
+	pages, scanned := job.Pages, 0
 	for {
 		if r.archive.blocked(key) {
 			return nil
@@ -477,7 +493,7 @@ func (r *receiver) history(ctx context.Context, key string, p PeerInfo, incremen
 		eligible := make([]tg.MessageClass, 0, len(page))
 		reachedBoundary := false
 		for _, m := range page {
-			if msg, ok := m.AsNotEmpty(); ok && !r.historyPolicy.Since.IsZero() && int64(msg.GetDate()) < r.historyPolicy.unix() {
+			if msg, ok := m.AsNotEmpty(); ok && job.Since != 0 && int64(msg.GetDate()) < job.Since {
 				reachedBoundary = true
 				continue
 			}
@@ -504,19 +520,16 @@ func (r *receiver) history(ctx context.Context, key string, p PeerInfo, incremen
 		}
 		if next == 0 || reachedBoundary {
 			log.Printf("History scan read complete: peer=%s mode=%s pages=%d scanned=%d newest_id=%d", key, mode, pages, scanned, newest)
-			if incremental {
-				return r.archive.checkpoint(key, p.Offset, p.HistoryDone, newest)
-			}
-			return r.archive.checkpoint(key, offset, true, newest)
+			job.Offset, job.Newest, job.Pages, job.Done = offset, newest, pages, true
+			return r.archive.commitHistoryJob(key, job, incremental)
 		}
 		if offset != 0 && next >= offset {
 			return errors.New("history pagination made no progress")
 		}
 		offset = next
-		if !incremental {
-			if err := r.archive.checkpoint(key, offset, false, newest); err != nil {
-				return err
-			}
+		job.Offset, job.Newest, job.Pages = offset, newest, pages
+		if err := r.archive.commitHistoryJob(key, job, incremental); err != nil {
+			return err
 		}
 	}
 }
@@ -528,76 +541,78 @@ func inaccessible(err error) bool {
 func (r *receiver) sync(ctx context.Context) error {
 	started := time.Now()
 	log.Print("History and deletion reconciliation starting")
-	if err := r.discover(ctx); err != nil {
+	cycle, resumed, err := r.loadCycle()
+	if err != nil {
 		return err
 	}
-	if !r.historyPolicy.Disabled {
-		if err := r.archive.setHistoryScope(r.historyPolicy.unix()); err != nil {
+	if !resumed {
+		if err := r.discover(ctx); err != nil {
+			return err
+		}
+		if !r.historyPolicy.Disabled {
+			if err := r.archive.setHistoryScope(r.historyPolicy.unix()); err != nil {
+				return err
+			}
+		}
+		cycle = syncCycle{StartedAt: started, HistorySince: r.historyPolicy.unix(), HistoryDisabled: r.historyPolicy.Disabled, ReconcileWindow: r.reconcileWindow, Phase: "reconcile"}
+		for key := range r.archive.peers() {
+			cycle.Peers = append(cycle.Peers, key)
+		}
+		sort.Strings(cycle.Peers)
+		if err := r.archive.saveJob(syncCycleKey, cycle); err != nil {
 			return err
 		}
 	}
-	peers := r.archive.peers()
-	keys := make([]string, 0, len(peers))
-	for key := range peers {
-		keys = append(keys, key)
+	log.Printf("Synchronization cycle: peers=%d phase=%s resumed=%t position=%d", len(cycle.Peers), cycle.Phase, resumed, cycle.Position)
+	policy, window := r.historyPolicy, r.reconcileWindow
+	r.historyPolicy = historyConfig{Disabled: cycle.HistoryDisabled}
+	if cycle.HistorySince > 0 {
+		r.historyPolicy.Since = time.Unix(cycle.HistorySince, 0).UTC()
 	}
-	sort.Strings(keys)
-	log.Printf("Synchronizing %d accessible peers", len(keys))
-	// Purge missed deletions and edits before spending time on the initial history backlog.
-	for index, key := range keys {
-		p := peers[key]
-		if p.Kind != "chat" && p.AccessHash == 0 && p.ID != r.self {
-			log.Printf("Skipping peer without access hash: peer=%s", key)
-			continue
-		}
-		log.Printf("Reconciling peer: %d/%d peer=%s", index+1, len(keys), key)
-		if err := r.reconcile(ctx, key, p); err != nil {
-			if inaccessible(err) {
-				if err := r.archive.block(key, "access revoked"); err != nil {
-					return err
+	r.reconcileWindow, r.cycleStarted = cycle.ReconcileWindow, cycle.StartedAt
+	defer func() { r.historyPolicy, r.reconcileWindow, r.cycleStarted = policy, window, time.Time{} }()
+	for {
+		for cycle.Position < len(cycle.Peers) {
+			key := cycle.Peers[cycle.Position]
+			p, ok := r.archive.peer(key)
+			if ok && !r.archive.blocked(key) && (p.Kind == "chat" || p.AccessHash != 0 || p.ID == r.self) {
+				if cycle.Phase == "reconcile" {
+					err = r.reconcile(ctx, key, p)
+				} else if !r.historyPolicy.Disabled {
+					if p.Newest > 0 || p.HistoryDone {
+						err = r.history(ctx, key, p, true)
+					}
+					if err == nil && !p.HistoryDone {
+						err = r.history(ctx, key, p, false)
+					}
 				}
-				delete(peers, key)
-				continue
-			}
-			return fmt.Errorf("reconcile %s: %w", key, err)
-		}
-	}
-	for _, key := range keys {
-		p, ok := peers[key]
-		if !ok {
-			continue
-		}
-		if r.historyPolicy.Disabled {
-			continue
-		}
-		if p.Kind != "chat" && p.AccessHash == 0 && p.ID != r.self {
-			continue
-		}
-		// A resumed historical scan also checks messages newer than its first page.
-		if p.Newest > 0 || p.HistoryDone {
-			if err := r.history(ctx, key, p, true); err != nil {
-				if inaccessible(err) {
+				if err != nil {
+					if !inaccessible(err) {
+						return fmt.Errorf("%s %s: %w", cycle.Phase, key, err)
+					}
 					if err := r.archive.block(key, "access revoked"); err != nil {
 						return err
 					}
-					continue
+					err = nil
 				}
-				return fmt.Errorf("new history %s: %w", key, err)
+			}
+			cycle.Position++
+			if err := r.archive.saveJob(syncCycleKey, cycle); err != nil {
+				return err
 			}
 		}
-		if !p.HistoryDone {
-			if err := r.history(ctx, key, p, false); err != nil {
-				if inaccessible(err) {
-					if err := r.archive.block(key, "access revoked"); err != nil {
-						return err
-					}
-					continue
-				}
-				return fmt.Errorf("history %s: %w", key, err)
-			}
+		if cycle.Phase == "history" {
+			break
+		}
+		cycle.Phase, cycle.Position = "history", 0
+		if err := r.archive.saveJob(syncCycleKey, cycle); err != nil {
+			return err
 		}
 	}
-	log.Printf("History and deletion reconciliation complete: peers=%d elapsed=%s", len(keys), time.Since(started).Round(time.Millisecond))
+	if err := r.archive.finishCycle(cycle); err != nil {
+		return err
+	}
+	log.Printf("History and deletion reconciliation complete: peers=%d elapsed=%s", len(cycle.Peers), time.Since(started).Round(time.Millisecond))
 	return nil
 }
 

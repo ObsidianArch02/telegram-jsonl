@@ -28,7 +28,7 @@ commit buildable; do not split a dependent implementation into broken commits.
 
 For each atomic change:
 
-1. Implement it and run checks appropriate to its impact.
+1. Implement it, synchronize its documentation, and run appropriate checks.
 2. Inspect `git status --short` and the staged diff. Stage explicit paths or
    selected hunks; preserve unrelated user changes.
 3. Check for private data and build artifacts, then create a local commit.
@@ -138,6 +138,27 @@ use the rules below and report that their hook could not be run.
 - Release automation must build the supported Linux/macOS/Windows targets for
   amd64 and arm64, with source, license notices, and checksums. Keep actions
   pinned and permissions limited; publishing still requires upload approval.
+
+## Task Completion
+
+Before ending every task:
+
+1. Compare the final implementation with the relevant documentation. Update
+   affected commands, flags, defaults, data layouts, examples, limitations, and
+   development or release instructions as part of the corresponding atomic change.
+2. Keep English and Chinese user-facing documents synchronized; `AGENTS.md`
+   remains English-only. Check affected links, heading anchors, command examples,
+   and documentation included in release packages.
+3. Commit each completed atomic change on the development branch, including its
+   documentation. Review the resulting commits and run `git status --short` to
+   confirm there are no remaining task-owned staged, unstaged, or untracked changes.
+4. Workspace cleanup means keeping the Git-managed worktree orderly. Preserve
+   ignored build artifacts, temporary builds, dependency and build caches, exported
+   data, and login files unless the maintainer explicitly requests their removal.
+5. Preserve unrelated user changes rather than reverting, hiding, or sweeping them
+   into a commit. If they remain, report them; do not claim the entire worktree is
+   clean. Finish with a concise report of documentation updates, checks, commits,
+   and the actual Git status. Uploads still require explicit maintainer approval.
 
 ## Verification
 

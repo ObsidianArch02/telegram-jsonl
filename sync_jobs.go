@@ -160,7 +160,7 @@ func (a *archive) requestRepair(peer string) error {
 }
 
 func (a *archive) finishCycle(cycle syncCycle) error {
-	keys := []string{syncCycleKey}
+	keys := []string{syncCycleKey, "repair_requests"}
 	for _, peer := range cycle.Peers {
 		for _, mode := range []string{"reconcile", "catchup", "backfill"} {
 			keys = append(keys, syncJobKey(mode, peer))

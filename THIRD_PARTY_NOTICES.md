@@ -28,7 +28,9 @@ Dependency versions are recorded in [go.mod](go.mod) and [go.sum](go.sum).
 Dependencies retain their own licenses and copyright notices, including
 [gotd/td](https://github.com/gotd/td) for MTProto and Telegram API handling.
 The release packaging includes dependency notices and license texts where
-required; preserve them when redistributing binaries or source.
+required; preserve them when redistributing binaries or source. The
+[license inventory](licenses/inventory.json) records copied files and SHA-256
+hashes for the modules linked across all six release targets.
 
 ## Redistribution
 

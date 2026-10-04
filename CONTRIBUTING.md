@@ -56,6 +56,16 @@ Only submit code and documentation you have the right to contribute. Preserve
 upstream notices and identify modifications to derived third-party code.
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+When updating dependencies, regenerate the notices for the actual linked modules:
+
+```sh
+go run ./scripts/licenses --output licenses
+```
+
+Review and commit [the inventory](licenses/inventory.json) and copied license texts
+alongside the dependency change. CI regenerates them independently and compares
+the result. Remove obsolete generated notice directories when a module is dropped.
+
 ## Releases
 
 The repository's tag-triggered workflow builds and publishes multi-platform

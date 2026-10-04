@@ -535,7 +535,41 @@ func (r *receiver) history(ctx context.Context, key string, p PeerInfo, incremen
 }
 
 func inaccessible(err error) bool {
-	return tgerr.Is(err, "CHANNEL_PRIVATE", "CHAT_FORBIDDEN", "USER_BANNED_IN_CHANNEL")
+	return tgerr.Is(err, "CHANNEL_PRIVATE", "CHANNEL_INVALID", "CHAT_FORBIDDEN", "USER_BANNED_IN_CHANNEL", "PEER_ID_INVALID")
+}
+
+// verifyArchivedPeers checks peers that are no longer in the current dialog
+// folders. A folder change is not proof that a public channel became
+// inaccessible, so only an explicit Telegram access error blocks it.
+func (r *receiver) verifyArchivedPeers(ctx context.Context) error {
+	for key, peer := range r.archive.peers() {
+		if r.archive.blocked(key) {
+			continue
+		}
+		var err error
+		switch peer.Kind {
+		case "channel":
+			_, err = r.api.ChannelsGetParticipants(ctx, &tg.ChannelsGetParticipantsRequest{
+				Channel: &tg.InputChannel{ChannelID: peer.ID, AccessHash: peer.AccessHash},
+				Filter:  &tg.ChannelParticipantsRecent{}, Limit: 1,
+			})
+		case "chat", "user":
+			_, err = r.api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{Peer: inputPeer(peer), Limit: 1})
+		default:
+			continue
+		}
+		if err == nil {
+			continue
+		}
+		if inaccessible(err) {
+			if err := r.archive.block(key, "access revoked or peer unavailable"); err != nil {
+				return err
+			}
+			continue
+		}
+		return fmt.Errorf("verify archived peer %s: %w", key, err)
+	}
+	return nil
 }
 
 func (r *receiver) sync(ctx context.Context) error {
@@ -562,6 +596,9 @@ func (r *receiver) sync(ctx context.Context) error {
 		if err := r.archive.saveJob(syncCycleKey, cycle); err != nil {
 			return err
 		}
+	}
+	if err := r.verifyArchivedPeers(ctx); err != nil {
+		return err
 	}
 	log.Printf("Synchronization cycle: peers=%d phase=%s resumed=%t position=%d", len(cycle.Peers), cycle.Phase, resumed, cycle.Position)
 	policy, window := r.historyPolicy, r.reconcileWindow

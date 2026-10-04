@@ -28,7 +28,7 @@ formula 位于 `Formula/telegram-jsonl.rb`。
 不是固定发布版本。
 
 formula 支持 macOS、Linux 的 Intel/AMD（`amd64`）与 ARM（`arm64`）。
-Homebrew 会安装 Go 构建依赖，源码要求 [go.mod](../go.mod) 指定的 Go 版本，当前为 1.24 或更新版本。
+Homebrew 会安装 Go 构建依赖，源码要求 [go.mod](../go.mod) 指定的 Go 版本，当前为 1.25 或更新版本。
 安装结果是单一独立可执行文件，运行时无需 Go、额外 tdl、TDLib 或 SQLite 安装。
 
 审查通过的源码更新发布后，更新开发版：

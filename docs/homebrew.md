@@ -31,7 +31,7 @@ It builds the repository's `main` branch rather than a fixed release.
 
 The formula supports macOS and Linux on Intel/AMD (`amd64`) and ARM (`arm64`).
 Homebrew installs its Go build dependency; the source requires the Go version
-specified by [go.mod](../go.mod), currently 1.24 or newer. The installed result
+specified by [go.mod](../go.mod), currently 1.25 or newer. The installed result
 is one standalone executable and does not need Go, a separate tdl executable,
 TDLib, or a SQLite installation at runtime.
 

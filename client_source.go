@@ -11,14 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"time"
 
-	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/telegram/dcs"
-	"go.etcd.io/bbolt"
 	"golang.org/x/net/proxy"
 	"telegram-jsonl/internal/tdllogin"
 )
@@ -61,60 +58,6 @@ func resolveSourceConfig(mode, namespace string) (sourceConfig, error) {
 	return c, nil
 }
 
-func validateSessionBytes(data []byte) error {
-	if len(data) == 0 || len(data) > 2*1024*1024 {
-		return errors.New("invalid session data")
-	}
-	storage := &session.StorageMemory{}
-	if err := storage.StoreSession(context.Background(), data); err != nil {
-		return err
-	}
-	saved, err := (&session.Loader{Storage: storage}).Load(context.Background())
-	if err != nil || saved.DC <= 0 || len(saved.AuthKey) != 256 || len(saved.AuthKeyID) != 8 {
-		return errors.New("invalid session data")
-	}
-	return nil
-}
-
-// The previous host's database is only opened read-only. The original is retained.
-func migrateLegacySession(dataDir, namespace string) (bool, error) {
-	target := filepath.Join(dataDir, "session.json")
-	if _, err := os.Lstat(target); err == nil {
-		return false, nil
-	} else if !os.IsNotExist(err) {
-		return false, err
-	}
-	legacy := filepath.Join(dataDir, "tdl-runtime", "storage", namespace)
-	if _, err := os.Lstat(legacy); os.IsNotExist(err) {
-		return false, nil
-	} else if err != nil {
-		return false, err
-	}
-	db, err := bbolt.Open(legacy, 0600, &bbolt.Options{ReadOnly: true, Timeout: time.Second})
-	if err != nil {
-		return false, errors.New("cannot read legacy session; stop the previous host and retry")
-	}
-	defer db.Close()
-	var encoded []byte
-	if err := db.View(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket([]byte(namespace))
-		if bucket == nil {
-			return errors.New("legacy namespace missing")
-		}
-		if app := bucket.Get([]byte("app")); string(app) != "builtin" {
-			return errors.New("legacy session does not use tdl builtin application identity")
-		}
-		encoded = append([]byte(nil), bucket.Get([]byte("session"))...)
-		return validateSessionBytes(encoded)
-	}); err != nil {
-		return false, err
-	}
-	if err := atomicWrite(target, encoded); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
 func sourceStorage(dataDir string, c sourceConfig, fail *failure, reset bool) (*stableSession, error) {
 	path := filepath.Join(dataDir, "client.json")
 	var identity clientIdentity
@@ -124,11 +67,6 @@ func sourceStorage(dataDir string, c sourceConfig, fail *failure, reset bool) (*
 	}
 	if err == nil && identity != c.clientIdentity {
 		return nil, errors.New("session directory belongs to a different client identity or component")
-	}
-	if c.Mode == "tdl" && !reset {
-		if _, err := migrateLegacySession(dataDir, c.Namespace); err != nil {
-			return nil, err
-		}
 	}
 	if err := writeJSON(path, c.clientIdentity); err != nil {
 		return nil, err

@@ -14,7 +14,7 @@ go vet ./...
 ```
 
 修改 Go 文件后运行 `gofmt`。自动化测试不得要求 Telegram 凭证或连接真实账户，
-生命周期、归档、迁移和下载测试使用临时目录与模拟 RPC 响应。
+生命周期、归档和下载测试使用临时目录与模拟 RPC 响应。
 
 ## 修改要求
 
@@ -32,7 +32,7 @@ README 聚焦安装与首次使用，详细配置、边界情况和例子放入 
 ## 提交与 Pull Request
 
 采用 conventional commit 标题，例如 `fix(fetch): reject replaced attachments`
-或 `docs: explain session migration`。有助于审查时，在正文解释原因。
+或 `docs: explain login options`。有助于审查时，在正文解释原因。
 无关修改分别提交，说明真正执行过的检查。
 
 提交信息只使用 ASCII 英文，标题不超过 72 个字符且不以英文句号结尾。

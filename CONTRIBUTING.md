@@ -15,7 +15,7 @@ go vet ./...
 
 Use `gofmt` on changed Go files. Automated tests must not require Telegram
 credentials or contact real accounts. Use temporary directories and simulated
-RPC responses for lifecycle, archive, migration, and download tests.
+RPC responses for lifecycle, archive, and download tests.
 
 ## Changes
 
@@ -37,7 +37,7 @@ configuration, edge cases, and examples in `docs/`.
 ## Commits and Pull Requests
 
 Use a conventional commit subject such as `fix(fetch): reject replaced attachments`
-or `docs: explain session migration`. Describe why in the body when it helps
+or `docs: explain login options`. Describe why in the body when it helps
 review. Separate unrelated changes and include the checks actually run.
 
 Commit messages must use ASCII English. Keep subjects within 72 characters and

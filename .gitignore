@@ -3,7 +3,6 @@
 /fetch-data/
 /attachments/
 /telegram-jsonl
-/tools/tdl
 *.test
 
 # Local accounts, archives, downloads, and credentials.
@@ -25,7 +24,6 @@ login.json
 metadata.json
 client.json
 .lock
-.tdl-launch.lock
 .write-*
 .fetch-*
 
@@ -33,7 +31,6 @@ client.json
 /dist/
 /bin/
 /work/
-/tools/
 *.exe
 *.zip
 *.tar.gz
@@ -42,6 +39,3 @@ client.json
 .DS_Store
 .idea/
 .vscode/
-
-# Retired binary-based integration, kept locally for migration reference.
-/integrations/tdl/

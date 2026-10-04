@@ -128,16 +128,6 @@
       ]
     },
     {
-      "module": "go.etcd.io/bbolt",
-      "version": "v1.3.10",
-      "notices": [
-        {
-          "file": "go.etcd.io/bbolt@v1.3.10/LICENSE",
-          "sha256": "c15d721c37e277a11584547de6d618541501f7aa10c4e32a945a4f9ff36cb0f6"
-        }
-      ]
-    },
-    {
       "module": "go.opentelemetry.io/otel/trace",
       "version": "v1.38.0",
       "notices": [

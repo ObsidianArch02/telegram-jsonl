@@ -17,7 +17,7 @@ application secrets, or downloaded personal files.
 ## Local Data
 
 Session files grant account access. Protect both the archive and fetch state,
-including preserved legacy session files. Keep state out of version control,
+and keep state out of version control,
 public shares, and ordinary diagnostic uploads. Restrictive Unix permissions do
 not encrypt data and are not a substitute for Windows ACLs or disk protection.
 If a session leaks, revoke the corresponding device authorization in Telegram
@@ -29,7 +29,7 @@ this program does not inspect them for malware.
 
 ## Scope and Limits
 
-Deletion, protection handling, account binding, migration validation, and download
+Deletion, protection handling, account binding, and download
 path isolation are security-relevant behavior. Tests use simulations; real-account
 behavior is not yet verified. Remote deletions cannot be observed offline and do
 not erase external backups or completed downloads.

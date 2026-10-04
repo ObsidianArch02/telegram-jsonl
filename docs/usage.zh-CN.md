@@ -18,21 +18,12 @@
 `--check-client` 只在本地检查集成客户端，不连接 Telegram。
 二维码登录在手机 **Telegram > 设置 > 设备 > 连接桌面设备**中扫码，请核对手机上的设备授权。
 二维码包含短期登录令牌，不要分享终端录屏。`--login-method code` 使用手机号和验证码，
-需要时还会请求两步验证密码。
+需要时还会请求两步验证密码。输入和粘贴的每个字符均显示为 `*`，退格删除最后一个字符，
+Ctrl-U 清空输入，Enter 提交。
 
 登录后复用同一数据目录，去掉 `--login`。即使带上 `--login`，已有有效会话也会复用。
 只有确实要替换 tdl 授权时才用 `--login --tdl-relogin`。程序不注册新账户，不自动重试登录。
 Ctrl-C 仅停止进程，不主动登出账户。
-
-### 从双二进制原型迁移
-
-升级前停止旧进程。新程序继续使用相同 `--data` 目录，无需 `tools/tdl` 或安装扩展。
-若没有 `session.json`，客户端可以从自身旧 tdl Bolt 会话中导入授权：
-`archive` 使用 `tdl-runtime/storage/local-jsonl`，`fetch` 使用 `local-fetch`。
-迁移在本地完成，保留旧会话文件，在该组件数据目录根部生成新的 `session.json`。
-
-迁移仅针对旧原型自身的数据布局，不读取 Telegram Desktop 的 `tdata` 或其他客户端授权。
-迁移后旧文件仍是账户凭证，继续妥善保护。
 
 ## 配置
 
@@ -70,7 +61,7 @@ set -gx TG_API_HASH 'YOUR_APP_HASH'
 | `--history-since` | 空 | UTC 起始日期或 RFC3339 时间。 |
 
 `./telegram-jsonl archive --help`、`search --help`、`fetch --help`
-列出所用版本实际接受的参数。不带子命令时保留旧版 `archive` 行为。
+列出所用版本实际接受的参数。不带子命令时默认运行 `archive`。
 
 ### 历史窗口
 

@@ -71,7 +71,7 @@ JSONL 表示当前归档状态，不是不可变事件日志。程序离线时�
 
 ## 文档
 
-- [使用、登录、旧会话迁移与完整 PDF 下载例子](docs/usage.zh-CN.md)
+- [使用、登录与完整 PDF 下载例子](docs/usage.zh-CN.md)
 - [JSONL 格式与非文本消息覆盖](docs/data-format.zh-CN.md)
 - [消息生命周期与运行限制](docs/limitations.zh-CN.md)
 - [安全问题报告](SECURITY.zh-CN.md)

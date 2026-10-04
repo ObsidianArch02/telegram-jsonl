@@ -75,7 +75,7 @@ legal compliance. Review the [Telegram disclaimer](DISCLAIMER.md) before use.
 
 ## Documentation
 
-- [Usage, login, migration, and a complete PDF download example](docs/usage.md)
+- [Usage, login, and a complete PDF download example](docs/usage.md)
 - [JSONL format and non-text message coverage](docs/data-format.md)
 - [Lifecycle behavior and operational limits](docs/limitations.md)
 - [Security reporting](SECURITY.md)

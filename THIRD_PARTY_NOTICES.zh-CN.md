@@ -4,18 +4,18 @@
 
 ## tdl
 
-集成应用身份、二维码/验证码登录流程和旧 Bolt 会话布局派生自
+集成应用配置和二维码/验证码登录流程派生自
 [iyear/tdl](https://github.com/iyear/tdl)，由 iyear 及其贡献者维护，
 采用 GNU Affero General Public License v3.0。
 引用版本为 `v0.20.4`，固定提交为
 `9d7d49eef2bcb04da720c26e33598c49c68b9ddd`。
 
-相关上游文件为 `app/login/qr.go`、`app/login/code.go`、`pkg/tclient/app.go`、
-`pkg/kv/bolt.go` 及其会话存储辅助代码，见[固定提交源码](https://github.com/iyear/tdl/tree/9d7d49eef2bcb04da720c26e33598c49c68b9ddd)。
+相关上游文件为 `app/login/qr.go`、`app/login/code.go`、`pkg/tclient/app.go`，
+见[固定提交源码](https://github.com/iyear/tdl/tree/9d7d49eef2bcb04da720c26e33598c49c68b9ddd)。
 
-本项目修改集成方式，编译为一个 Go 可执行文件，二维码/验证码登录采用 tdl 自有内置应用身份，
-本地保存稳定会话，隔离归档/下载授权，接入已有归档器，并在不修改原文件的情况下迁移旧原型 Bolt 状态。
-不分发或运行旧 tdl 扩展宿主。这些修改由本项目维护，不属于上游 tdl 官方修改。
+本项目修改集成方式，编译为一个 Go 可执行文件，二维码/验证码登录采用项目配置的应用凭证，
+本地保存稳定会话，隔离归档/下载授权，并接入归档器。
+这些修改由本项目维护，不属于上游 tdl 官方修改。
 派生源码包含归属注释，[LICENSE](LICENSE) 提供 AGPL 全文。
 
 ## Go 依赖

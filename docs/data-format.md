@@ -24,7 +24,6 @@ data-tdl/
 
 Fetch keeps its authorization and cooldown in `fetch-data/`, with downloaded
 files in `fetch-data/attachments/` unless `--output` specifies another directory.
-Legacy `tdl-runtime/` state may remain after migration; it is still sensitive.
 
 Do not share state as a diagnostic attachment. Internal metadata includes access
 information not intended for downstream consumers. Restrictive file permissions

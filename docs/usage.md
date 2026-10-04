@@ -20,26 +20,15 @@ component; an account or session-namespace mismatch stops the command.
 For QR login, scan with **Telegram > Settings > Devices > Link Desktop Device**.
 Verify the device authorization on your phone. QR codes contain short-lived login
 tokens; do not share terminal recordings. `--login-method code` uses a phone
-number and login code, with a two-factor password when required.
+number and login code, with a two-factor password when required. These inputs
+display one `*` per character, including pasted text. Backspace deletes the last
+character, Ctrl-U clears the input, and Enter submits it.
 
 Reuse the same data directory after login and omit `--login`. Existing authorized
 sessions are reused even when `--login` is present. Only use
 `--login --tdl-relogin` when you explicitly intend to replace the tdl authorization.
 The application does not register new accounts or automatically retry failed logins.
 Ctrl-C stops the process without logging the account out.
-
-### Migration from the Two-Binary Prototype
-
-Stop the old processes before upgrading. Use the same `--data` directory with
-the new executable; no `tools/tdl` executable or extension installation is needed.
-If `session.json` is absent, the client can import its own legacy tdl Bolt session
-from `tdl-runtime/storage/local-jsonl` for `archive`, or `local-fetch` for `fetch`.
-Migration runs locally and preserves the original session file. The new
-`session.json` is saved at the root of that component's data directory.
-
-This migration is limited to the old prototype's own session layout. It does not
-read Telegram Desktop `tdata` or other clients' account authorizations. Keep old
-state private even after migration; preserving it also preserves a credential.
 
 ## Configuration
 
@@ -80,7 +69,7 @@ Do not put credentials in source files, issues, terminal recordings, or commits.
 
 Run `./telegram-jsonl archive --help`, `search --help`, or `fetch --help` for
 the authoritative options accepted by your build. Running without a subcommand
-retains the legacy `archive` behavior.
+defaults to `archive`.
 
 ### History Windows
 

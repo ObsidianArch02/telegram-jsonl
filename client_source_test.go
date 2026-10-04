@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/gotd/td/session"
-	"go.etcd.io/bbolt"
 	"telegram-jsonl/internal/tdllogin"
 )
 
@@ -21,27 +20,6 @@ func validSession(t *testing.T) []byte {
 	b, err := storage.Bytes(nil)
 	requireOK(t, err)
 	return b
-}
-
-func legacyFixture(t *testing.T, namespace, app string, data []byte) (string, string) {
-	t.Helper()
-	root := t.TempDir()
-	path := filepath.Join(root, "tdl-runtime", "storage", namespace)
-	requireOK(t, privateDir(filepath.Dir(path)))
-	db, err := bbolt.Open(path, 0600, nil)
-	requireOK(t, err)
-	requireOK(t, db.Update(func(tx *bbolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists([]byte(namespace))
-		if err != nil {
-			return err
-		}
-		if err := bucket.Put([]byte("app"), []byte(app)); err != nil {
-			return err
-		}
-		return bucket.Put([]byte("session"), data)
-	}))
-	requireOK(t, db.Close())
-	return root, path
 }
 
 func TestSourceIntegrationNeedsNoToolOrUserCredentials(t *testing.T) {
@@ -71,51 +49,6 @@ func TestSourceIntegrationNativeCredentialsRequireCompletePair(t *testing.T) {
 	requireOK(t, err)
 	if c.Mode != "native" || c.APIID != 12345 {
 		t.Fatal("native credentials not selected")
-	}
-}
-
-func TestSourceIntegrationMigratesLegacySessionWithoutModifyingDatabase(t *testing.T) {
-	data := validSession(t)
-	root, path := legacyFixture(t, hostNamespace, "builtin", data)
-	before, err := os.ReadFile(path)
-	requireOK(t, err)
-	migrated, err := migrateLegacySession(root, hostNamespace)
-	requireOK(t, err)
-	if !migrated {
-		t.Fatal("legacy session not migrated")
-	}
-	after, err := os.ReadFile(path)
-	requireOK(t, err)
-	if !bytes.Equal(before, after) {
-		t.Fatal("legacy database modified")
-	}
-	newSession, err := os.ReadFile(filepath.Join(root, "session.json"))
-	requireOK(t, err)
-	if !bytes.Equal(data, newSession) {
-		t.Fatal("authorization changed during migration")
-	}
-	migrated, err = migrateLegacySession(root, hostNamespace)
-	requireOK(t, err)
-	if migrated {
-		t.Fatal("migration overwrote current session")
-	}
-}
-
-func TestSourceIntegrationRejectsWrongOrCorruptLegacySession(t *testing.T) {
-	for _, app := range []string{"desktop", "builtin"} {
-		t.Run(app, func(t *testing.T) {
-			data := validSession(t)
-			if app == "builtin" {
-				data = []byte("corrupt-secret-session")
-			}
-			root, _ := legacyFixture(t, hostNamespace, app, data)
-			if _, err := migrateLegacySession(root, hostNamespace); err == nil || strings.Contains(err.Error(), "corrupt-secret-session") {
-				t.Fatal("invalid legacy session accepted or exposed")
-			}
-			if _, err := os.Stat(filepath.Join(root, "session.json")); !os.IsNotExist(err) {
-				t.Fatal("invalid authorization committed")
-			}
-		})
 	}
 }
 

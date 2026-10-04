@@ -24,9 +24,9 @@ type Credentials struct {
 	Hash string
 }
 
-// Builtin preserves tdl's own published application identity, not Desktop's.
+// Builtin returns this application's configured credentials.
 func Builtin() Credentials {
-	return Credentials{ID: 15055931, Hash: "021d433426cbb920eeb95164498fe3d3"}
+	return Credentials{ID: 32609185, Hash: "51d277d44cdae4ba8873e8ddba455251"}
 }
 
 type QRFlow interface {

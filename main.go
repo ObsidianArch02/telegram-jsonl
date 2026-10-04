@@ -9,15 +9,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/telegram/updates"
 	"github.com/gotd/td/tg"
 	"golang.org/x/sync/errgroup"
@@ -51,7 +50,7 @@ func readSecret(ctx context.Context, prompt string) (string, error) {
 		if a.err != nil {
 			return "", a.err
 		}
-		v := strings.TrimSpace(string(a.b))
+		v := string(a.b)
 		for i := range a.b {
 			a.b[i] = 0
 		}
@@ -63,13 +62,15 @@ func readSecret(ctx context.Context, prompt string) (string, error) {
 }
 
 func (terminalAuth) Phone(ctx context.Context) (string, error) {
-	return readSecret(ctx, "Phone number (international format, hidden): ")
+	v, err := readSecret(ctx, "Phone number (international format, hidden): ")
+	return strings.TrimSpace(v), err
 }
 func (terminalAuth) Password(ctx context.Context) (string, error) {
 	return readSecret(ctx, "Two-factor password (hidden): ")
 }
 func (terminalAuth) Code(ctx context.Context, _ *tg.AuthSentCode) (string, error) {
-	return readSecret(ctx, "Telegram login code (hidden): ")
+	v, err := readSecret(ctx, "Telegram login code (hidden): ")
+	return strings.TrimSpace(v), err
 }
 func (terminalAuth) AcceptTermsOfService(context.Context, tg.HelpTermsOfService) error {
 	return errors.New("account registration is unsupported; use an existing account")
@@ -80,18 +81,17 @@ func (terminalAuth) SignUp(context.Context) (auth.UserInfo, error) {
 
 func runArchive(args []string) error {
 	fs := flag.NewFlagSet("telegram-jsonl archive", flag.ContinueOnError)
-	data := fs.String("data", "./data", "single-account session and archive directory")
+	data := fs.String("data", "./data-tdl", "single-account session and archive directory")
 	login := fs.Bool("login", false, "allow interactive login when the saved session is unauthorized")
 	once := fs.Bool("once", false, "synchronize history and deletions, then exit")
 	interval := fs.Duration("interval", 2*time.Second, "minimum interval between RPC calls (at least 1s)")
 	batch := fs.Int("batch", 50, "messages/dialogs per request (1-100)")
 	every := fs.Duration("sync-every", 6*time.Hour, "periodic history and deletion reconciliation (at least 10m)")
 	clientMode := fs.String("client", "auto", "client backend: auto, native, or tdl")
-	tdlBinary := fs.String("tdl-bin", "", "bundled TDL host path (default: tools/tdl beside this executable)")
 	loginMethod := fs.String("login-method", "qr", "TDL login method: qr or code")
 	relogin := fs.Bool("tdl-relogin", false, "with --login, explicitly replace the saved TDL session")
-	checkClient := fs.Bool("check-client", false, "verify the bundled TDL host without contacting Telegram")
-	proxyAddress := fs.String("proxy", "", "TDL SOCKS5 proxy URL")
+	checkClient := fs.Bool("check-client", false, "verify source-integrated client configuration without contacting Telegram")
+	proxyAddress := fs.String("proxy", "", "SOCKS5 proxy URL")
 	historyDays := fs.Int("history-days", 30, "history lookback in days; 0 disables backfill, -1 enables all history")
 	historySince := fs.String("history-since", "", "history start: YYYY-MM-DD (UTC) or RFC3339; overrides default 30 days")
 	if err := fs.Parse(args); err != nil {
@@ -113,69 +113,20 @@ func runArchive(args []string) error {
 	if err != nil {
 		return err
 	}
-	var ext *tdlEnvironment
-	if path := os.Getenv("TDL_EXTENSION"); path != "" {
-		ext, err = loadTDLEnvironment(path)
-		if err != nil {
-			return err
-		}
-	}
-	mode := *clientMode
-	if mode == "auto" {
-		mode = "native"
-		if ext != nil {
-			mode = "tdl"
-		}
-	}
-	if mode != "native" && mode != "tdl" {
-		return errors.New("client must be auto, native, or tdl")
-	}
-	if mode == "native" && ext != nil {
-		return errors.New("TDL extension cannot select the native backend")
-	}
-	if mode == "tdl" && ext == nil {
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		defer stop()
-		err := launchTDL(ctx, tdlLaunchOptions{Data: *data, Binary: *tdlBinary, Login: *login, Relogin: *relogin, LoginMethod: *loginMethod, CheckOnly: *checkClient, Proxy: *proxyAddress, Once: *once, Interval: *interval, Batch: *batch, SyncEvery: *every, History: historyPolicy})
-		if ctx.Err() != nil {
-			return nil
-		}
+	cfg, err := resolveSourceConfig(*clientMode, hostNamespace)
+	if err != nil {
 		return err
 	}
-	if *checkClient && ext != nil {
-		fmt.Println("TDL extension environment verified; session loaded without contacting Telegram")
+	if err := validateLoginOptions(cfg, *login, *relogin, *loginMethod); err != nil {
+		return err
+	}
+	resolver, err := tdlResolver(*proxyAddress)
+	if err != nil {
+		return err
+	}
+	if *checkClient {
+		printSourceCheck(cfg)
 		return nil
-	}
-	if *checkClient || *relogin {
-		return errors.New("--check-client and --tdl-relogin are TDL launcher options")
-	}
-	apiID, apiHash := 0, ""
-	if ext != nil {
-		apiID, apiHash = ext.AppID, ext.AppHash
-		if *login {
-			return errors.New("log in through the TDL host before running its extension")
-		}
-		dataExplicit := false
-		fs.Visit(func(f *flag.Flag) {
-			if f.Name == "data" {
-				dataExplicit = true
-			}
-		})
-		if !dataExplicit {
-			*data = filepath.Join(ext.DataDir, ext.Namespace)
-		}
-	} else {
-		if *proxyAddress != "" {
-			return errors.New("--proxy is currently supported only by the TDL backend")
-		}
-		apiID, err = strconv.Atoi(os.Getenv("TG_API_ID"))
-		if err != nil || apiID <= 0 {
-			return errors.New("set TG_API_ID, or select --client tdl for direct client login")
-		}
-		apiHash = os.Getenv("TG_API_HASH")
-		if len(apiHash) != 32 {
-			return errors.New("set TG_API_HASH to your application hash")
-		}
 	}
 	if err := privateDir(*data); err != nil {
 		return err
@@ -221,26 +172,20 @@ func runArchive(args []string) error {
 		}
 	}})
 	var enabled atomic.Bool
-	var sessionStorage telegram.SessionStorage = &stableSession{path: filepath.Join(*data, "session.json"), failure: fail}
-	var resolverAddress string
-	if ext != nil {
-		var memory *session.StorageMemory
-		memory, err = ext.sessionStorage()
-		if err != nil {
-			return err
-		}
-		sessionStorage = memory
-		resolverAddress = ext.Proxy
-	}
-	resolver, err := tdlResolver(resolverAddress)
+	sessionStorage, err := sourceStorage(*data, cfg, fail, *relogin)
 	if err != nil {
 		return err
 	}
-	client := telegram.NewClient(apiID, apiHash, telegram.Options{
+	loginDispatcher := tg.NewUpdateDispatcher()
+	tokens := qrlogin.OnLoginToken(loginDispatcher)
+	client := telegram.NewClient(cfg.APIID, cfg.APIHash, telegram.Options{
 		SessionStorage: sessionStorage,
 		Resolver:       resolver,
 		Middlewares:    []telegram.Middleware{gate},
 		UpdateHandler: updateHandlerFunc(func(ctx context.Context, u tg.UpdatesClass) error {
+			if err := loginDispatcher.Handle(ctx, u); err != nil {
+				return err
+			}
 			if !enabled.Load() {
 				return nil
 			}
@@ -249,24 +194,9 @@ func runArchive(args []string) error {
 		Device: telegram.DeviceConfig{DeviceModel: "Local JSONL archive", AppVersion: "0.1.0", SystemLangCode: "en", LangCode: "en"},
 	})
 	err = client.Run(ctx, func(ctx context.Context) error {
-		status, err := client.Auth().Status(ctx)
+		status, err := loginSource(ctx, client, cfg, *login, *loginMethod, tokens)
 		if err != nil {
 			return err
-		}
-		if !status.Authorized {
-			if ext != nil {
-				return errors.New("TDL session is unauthorized; use --client tdl --login --tdl-relogin explicitly")
-			}
-			if !*login {
-				return errors.New("session is unauthorized; run once with --login in a terminal")
-			}
-			if err := auth.NewFlow(terminalAuth{}, auth.SendCodeOptions{}).Run(ctx, client.Auth()); err != nil {
-				return err
-			}
-			status, err = client.Auth().Status(ctx)
-			if err != nil {
-				return err
-			}
 		}
 		if status.User == nil || status.User.Bot {
 			return errors.New("a personal user account is required")
@@ -322,6 +252,9 @@ func run() error {
 	args := os.Args[1:]
 	if len(args) > 0 {
 		switch args[0] {
+		case "version", "--version":
+			fmt.Printf("telegram-jsonl %s (%s)\n", version, commit)
+			return nil
 		case "archive":
 			return runArchive(args[1:])
 		case "search":

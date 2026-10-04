@@ -1,0 +1,21 @@
+telegram-jsonl
+
+This project is licensed under the GNU Affero General Public License,
+version 3 only (AGPL-3.0-only). See LICENSE for the complete terms.
+
+The source-integrated login code in internal/tdllogin is adapted from
+iyear/tdl v0.20.4, revision 9d7d49eef2bcb04da720c26e33598c49c68b9ddd,
+specifically app/login/qr.go and pkg/tclient/app.go. Upstream project:
+https://github.com/iyear/tdl
+
+Original tdl authors and contributors retain copyright in their work.
+The adaptation uses tdl's own published application identity and replaces
+its CLI configuration, subprocess host, terminal prompts, and session
+storage with local code. Telegram Desktop's application identity is not used.
+
+Other Go dependencies retain their respective licenses. See
+THIRD_PARTY_NOTICES.md and go.mod for dependency and attribution details.
+
+Telegram is a trademark of its respective owner. This project is not
+affiliated with, endorsed by, or operated by Telegram. Source licensing
+does not grant rights to Telegram services or other users' content.

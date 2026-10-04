@@ -191,14 +191,19 @@ func (s *protocolStore) GetChannelAccessHash(_ context.Context, id, ch int64) (i
 }
 
 type stableSession struct {
-	mu      sync.Mutex
-	path    string
-	failure *failure
+	mu             sync.Mutex
+	path           string
+	failure        *failure
+	ignoreExisting bool
 }
 
 func (s *stableSession) LoadSession(_ context.Context) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.ignoreExisting {
+		s.ignoreExisting = false
+		return nil, session.ErrNotFound
+	}
 	b, err := os.ReadFile(s.path)
 	if os.IsNotExist(err) {
 		return nil, session.ErrNotFound

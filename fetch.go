@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/gotd/td/telegram"
-	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/telegram/downloader"
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
@@ -365,7 +365,12 @@ func (f *fetchRunner) download(ctx context.Context, record Record, peer PeerInfo
 		return
 	}
 	path := filepath.Join(output, fmt.Sprintf("%s-%d-%d%s", record.Peer, record.MessageID, a.ID, a.Extension))
-	if err := os.Rename(tmp.Name(), path); err != nil {
+	if err := replaceFile(tmp.Name(), path); err != nil {
+		result.Status = "error"
+		result.Reason = err.Error()
+		return
+	}
+	if err := syncDirectory(output); err != nil {
 		result.Status = "error"
 		result.Reason = err.Error()
 		return
@@ -388,8 +393,7 @@ func runFetch(args []string) error {
 	login := fs.Bool("login", false, "allow first login for the downloader's own session")
 	relogin := fs.Bool("tdl-relogin", false, "with --login, explicitly replace the downloader's TDL session")
 	loginMethod := fs.String("login-method", "qr", "TDL login: qr or code")
-	tdlBinary := fs.String("tdl-bin", "", "bundled TDL host path")
-	checkOnly := fs.Bool("check-client", false, "verify downloader host without accessing Telegram")
+	checkOnly := fs.Bool("check-client", false, "verify source-integrated downloader without accessing Telegram")
 	proxyAddress := fs.String("proxy", "", "TDL SOCKS5 proxy URL")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -403,8 +407,20 @@ func runFetch(args []string) error {
 	if *clientMode != "tdl" && *clientMode != "native" {
 		return errors.New("client must be tdl or native")
 	}
-	if *clientMode == "native" && (*relogin || *checkOnly) {
-		return errors.New("--tdl-relogin and --check-client require tdl")
+	cfg, err := resolveSourceConfig(*clientMode, fetchNamespace)
+	if err != nil {
+		return err
+	}
+	if err := validateLoginOptions(cfg, *login, *relogin, *loginMethod); err != nil {
+		return err
+	}
+	resolver, err := tdlResolver(*proxyAddress)
+	if err != nil {
+		return err
+	}
+	if *checkOnly {
+		printSourceCheck(cfg)
+		return nil
 	}
 	a, d, out, err := fetchDirectories(*archiveDir, *data, *output)
 	if err != nil {
@@ -427,34 +443,6 @@ func runFetch(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	var ext *tdlEnvironment
-	if path := os.Getenv("TDL_EXTENSION"); path != "" {
-		ext, err = loadTDLEnvironment(path)
-		if err != nil {
-			return err
-		}
-		if ext.Namespace != fetchNamespace {
-			return errors.New("fetch requires its own local-fetch TDL session")
-		}
-		if *clientMode != "tdl" {
-			return errors.New("TDL fetch extension cannot select native backend")
-		}
-	}
-	if *clientMode == "tdl" && ext == nil {
-		childArgs := []string{"fetch", "--client", "tdl", "--archive", a, "--data", d, "--output", out, "--pattern", *pattern, "--peer", *peerFilter, "--limit", strconv.Itoa(*limit), "--max-file-bytes", strconv.FormatInt(*maxBytes, 10), "--interval", interval.String()}
-		err := launchTDL(ctx, tdlLaunchOptions{Data: d, Binary: *tdlBinary, Login: *login, Relogin: *relogin, LoginMethod: *loginMethod, CheckOnly: *checkOnly, Proxy: *proxyAddress, Namespace: fetchNamespace, ChildArgs: childArgs})
-		if ctx.Err() != nil {
-			return nil
-		}
-		return err
-	}
-	if *checkOnly {
-		if ext != nil {
-			fmt.Println("Downloader TDL extension environment verified")
-			return nil
-		}
-		return errors.New("--check-client requires tdl")
-	}
 	if err := privateDir(d); err != nil {
 		return err
 	}
@@ -470,49 +458,17 @@ func runFetch(args []string) error {
 	if err != nil {
 		return err
 	}
-	var storage telegram.SessionStorage = &stableSession{path: filepath.Join(d, "session.json"), failure: fail}
-	id, hash := 0, ""
-	address := ""
-	if ext != nil {
-		id, hash, address = ext.AppID, ext.AppHash, ext.Proxy
-		storage, err = ext.sessionStorage()
-		if err != nil {
-			return err
-		}
-	} else {
-		if *clientMode == "tdl" {
-			return errors.New("TDL extension environment missing")
-		}
-		id, err = strconv.Atoi(os.Getenv("TG_API_ID"))
-		hash = os.Getenv("TG_API_HASH")
-		if err != nil || id <= 0 || len(hash) != 32 {
-			return errors.New("set TG_API_ID and TG_API_HASH for native downloader")
-		}
-		if *proxyAddress != "" {
-			return errors.New("proxy currently requires tdl")
-		}
-	}
-	resolver, err := tdlResolver(address)
+	storage, err := sourceStorage(d, cfg, fail, *relogin)
 	if err != nil {
 		return err
 	}
-	client := telegram.NewClient(id, hash, telegram.Options{SessionStorage: storage, Resolver: resolver, Middlewares: []telegram.Middleware{gate}, NoUpdates: true, Device: telegram.DeviceConfig{DeviceModel: "Local attachment fetch", AppVersion: "0.2.0", SystemLangCode: "en", LangCode: "en"}})
+	loginDispatcher := tg.NewUpdateDispatcher()
+	tokens := qrlogin.OnLoginToken(loginDispatcher)
+	client := telegram.NewClient(cfg.APIID, cfg.APIHash, telegram.Options{SessionStorage: storage, Resolver: resolver, Middlewares: []telegram.Middleware{gate}, UpdateHandler: loginDispatcher, Device: telegram.DeviceConfig{DeviceModel: "Local attachment fetch", AppVersion: "0.2.0", SystemLangCode: "en", LangCode: "en"}})
 	err = client.Run(ctx, func(ctx context.Context) error {
-		status, err := client.Auth().Status(ctx)
+		status, err := loginSource(ctx, client, cfg, *login, *loginMethod, tokens)
 		if err != nil {
 			return err
-		}
-		if !status.Authorized {
-			if ext != nil || !*login {
-				return errors.New("downloader session unauthorized; explicitly log in to its separate session")
-			}
-			if err := auth.NewFlow(terminalAuth{}, auth.SendCodeOptions{}).Run(ctx, client.Auth()); err != nil {
-				return err
-			}
-			status, err = client.Auth().Status(ctx)
-			if err != nil {
-				return err
-			}
 		}
 		if status.User == nil || status.User.Bot || status.User.ID != snapshot.Meta.AccountID {
 			return errors.New("downloader must log in to the same user account as the archive")

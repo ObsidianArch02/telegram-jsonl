@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -89,7 +90,7 @@ func TestFetchDownloadsWithoutChangingJSONL(t *testing.T) {
 	}
 	info, err := os.Stat(result.Path)
 	requireOK(t, err)
-	if info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatal("unsafe attachment permissions")
 	}
 	metaAfter, err := os.ReadFile(a.metaPath())
@@ -177,7 +178,12 @@ func TestFetchDirectorySeparationIncludesSymlinkParents(t *testing.T) {
 		t.Fatal("shared archiver session allowed")
 	}
 	alias := filepath.Join(root, "alias")
-	requireOK(t, os.Symlink(archive, alias))
+	if err := os.Symlink(archive, alias); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skip("symbolic link privilege unavailable")
+		}
+		requireOK(t, err)
+	}
 	if _, _, _, err := fetchDirectories(archive, filepath.Join(alias, "not-created"), ""); err == nil {
 		t.Fatal("symlink parent bypassed isolation")
 	}

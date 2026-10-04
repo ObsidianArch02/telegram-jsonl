@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 )
 
 // Atomic replacement also removes superseded message bodies from the active file.
@@ -30,15 +29,10 @@ func atomicWrite(path string, data []byte) (err error) {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	if err = os.Rename(f.Name(), path); err != nil {
+	if err = replaceFile(f.Name(), path); err != nil {
 		return err
 	}
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Sync()
+	return syncDirectory(dir)
 }
 
 func writeJSON(path string, value any) error {
@@ -74,7 +68,7 @@ func privateDir(dir string) error {
 	return os.Chmod(dir, 0700)
 }
 
-// This prototype targets macOS and Linux; flock prevents two processes sharing a session.
+// The OS releases the lock when its file handle closes or the process exits.
 func lockDirectory(dir string) (*os.File, error) {
 	return lockFile(dir, ".lock")
 }
@@ -84,7 +78,7 @@ func lockFile(dir, name string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := acquireFileLock(f); err != nil {
 		_ = f.Close()
 		return nil, errors.New("another process is using this data directory")
 	}

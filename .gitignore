@@ -23,6 +23,7 @@ updates.json
 cooldown.json
 login.json
 metadata.json
+client.json
 .lock
 .tdl-launch.lock
 .write-*

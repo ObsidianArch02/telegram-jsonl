@@ -4,7 +4,11 @@ go 1.24.0
 
 require (
 	github.com/gotd/td v0.132.0
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+	go.etcd.io/bbolt v1.3.10
+	golang.org/x/net v0.46.0
 	golang.org/x/sync v0.17.0
+	golang.org/x/sys v0.37.0
 	golang.org/x/term v0.36.0
 )
 
@@ -35,8 +39,6 @@ require (
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090 // indirect
 	golang.org/x/mod v0.29.0 // indirect
-	golang.org/x/net v0.46.0 // indirect
-	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

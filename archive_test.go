@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -193,13 +194,13 @@ func TestSingleAccountAndPermissions(t *testing.T) {
 	for _, path := range []string{a.metaPath(), filepath.Join(a.dir, "user-7.jsonl")} {
 		info, err := os.Stat(path)
 		requireOK(t, err)
-		if info.Mode().Perm() != 0600 {
+		if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 			t.Fatalf("unsafe permission on %s", path)
 		}
 	}
 	info, err := os.Stat(a.dir)
 	requireOK(t, err)
-	if info.Mode().Perm() != 0700 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0700 {
 		t.Fatal("unsafe directory permission")
 	}
 }

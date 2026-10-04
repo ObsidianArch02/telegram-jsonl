@@ -26,9 +26,12 @@ only JSONL writer; `search` remains read-only. Fetch reads messages without
 modifying JSONL or archiver metadata and may write only completed-download
 records to the shared SQLite `files` ledger.
 
-Never commit account sessions, login tokens, application secrets, message archives,
+Never commit account sessions, login tokens, contributor-specific application secrets, message archives,
 downloaded attachments, or logs containing personal content. Review the actual
 staged diff; `.gitignore` cannot protect secrets already tracked by Git.
+The maintainer may explicitly authorize the project's default application
+identity in source. Review that configuration and its Git history before any
+public upload; this exception does not cover account authorization or user data.
 Use synthetic examples in bug reports and documentation.
 
 English is the default documentation language. Update the corresponding
@@ -38,6 +41,11 @@ configuration, edge cases, and examples in `docs/`.
 
 ## Commits and Pull Requests
 
+Work on `dev/<topic>` branches. Complete and verify one atomic change, then
+commit it locally before starting the next; this does not require another commit
+approval. Keep `main` unchanged during routine development. Agents follow
+[AGENTS.md](AGENTS.md).
+
 Use a conventional commit subject such as `fix(fetch): reject replaced attachments`
 or `docs: explain login options`. Describe why in the body when it helps
 review. Separate unrelated changes and include the checks actually run.
@@ -46,6 +54,12 @@ Commit messages must use ASCII English. Keep subjects within 72 characters and
 omit a trailing period. Separate the subject, body, and trailers with blank lines.
 Breaking changes require both `!` in the subject and a `BREAKING CHANGE:` trailer
 that explains the change and migration. Each commit should compile on its own.
+
+Before publishing, rebase unpublished development commits onto the latest `main`
+from the verified remote, resolve conflicts, and run affected checks. Present the
+exact changes, commits, check results, and upload destination for maintainer
+review. Push only after explicit approval; local commits do not authorize uploads.
+Do not rewrite published history or force-push without separate authorization.
 
 Do not claim real-account validation from mock tests or offline client checks.
 If you run an authorized integration test, describe its scope without attaching

@@ -54,7 +54,7 @@ case "${1:-}" in
     for file in LICENSE README.md; do
       cp "$file" "$stage/$name/"
     done
-    for file in NOTICE README.zh-CN.md DISCLAIMER.md DISCLAIMER.zh-CN.md THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.zh-CN.md CONTRIBUTING.md CONTRIBUTING.zh-CN.md SECURITY.md SECURITY.zh-CN.md go.mod go.sum; do
+    for file in NOTICE README.zh-CN.md DISCLAIMER.md DISCLAIMER.zh-CN.md THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.zh-CN.md CONTRIBUTING.md CONTRIBUTING.zh-CN.md AGENTS.md SECURITY.md SECURITY.zh-CN.md go.mod go.sum; do
       if [[ -f "$file" ]]; then
         cp "$file" "$stage/$name/"
       fi

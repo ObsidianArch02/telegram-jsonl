@@ -11,13 +11,33 @@ a separately installed webhook server. The workflow tests the tagged source,
 cross-compiles the standalone executable, packages artifacts, and creates the
 GitHub release using its repository-scoped token.
 
-Review and commit the intended source first. Use a version not already released;
-the following version is an example, not a claim that a release exists:
+Develop on `dev/<topic>` and commit each verified atomic change locally.
+When preparing an upload, rebase unpublished commits onto the verified remote's
+latest `main`, resolve conflicts, and run the affected checks. The following
+preparation example assumes the upstream remote has been verified as `origin`
+and the current branch is an unpublished development branch:
 
-```sh
+```fish
+git fetch origin
+git rebase origin/main
 go test -race ./...
 go vet ./...
 git status --short
+git log origin/main..HEAD --oneline
+```
+
+Present the rebased commits, exact changes, check results, intended destination,
+and any application credentials in tracked source or history for maintainer
+review. Wait for explicit upload approval before pushing. Rebase and local
+commit authorization do not authorize publishing. Never force-push or rewrite
+published history without separate authorization.
+
+After approval, upload the reviewed source to the agreed destination. Create and
+push a release tag only when a release and its tag have also been requested and
+approved. Use a version not already released; this example assumes the current
+HEAD is the reviewed release commit, and does not claim a release exists:
+
+```fish
 git tag v0.1.0
 git push origin v0.1.0
 ```
@@ -35,6 +55,8 @@ Unix packages are `.tar.gz`; Windows packages are `.zip`. `SHA256SUMS` records
 the package checksums. Packages include the executable, project documentation,
 license, and upstream/dependency notices. A source archive is generated from the
 tagged Git tree rather than the workspace, excluding ignored local account state.
+Tracked application credentials are included in that source; `.gitignore` does
+not redact tracked files or Git history.
 
 Checksums detect accidental changes but are not independent publisher signatures.
 Cross-compilation verifies builds; it does not establish real-account behavior
@@ -54,7 +76,9 @@ bash scripts/release.sh build
 
 The helper disables CGO and uses the selected version and commit metadata.
 Run it from the repository root with the Go toolchain available. It requires
-an accurate source tree and includes project notices in the package.
+a clean, committed source tree matching `BUILD_COMMIT` and `HEAD`. The binary and
+root documents come from the working tree, while `docs/` and `licenses/` come
+from `HEAD`; local edits would produce a package with mismatched contents.
 
 ## Failed Runs
 

@@ -30,19 +30,22 @@ func readSecret(ctx context.Context, prompt string) (string, error) {
 	if !term.IsTerminal(fd) {
 		return "", errors.New("interactive login requires a terminal")
 	}
-	state, err := term.GetState(fd)
+	state, err := term.MakeRaw(fd)
 	if err != nil {
 		return "", err
 	}
 	defer term.Restore(fd, state)
 	fmt.Fprint(os.Stderr, prompt)
 	type answer struct {
-		b   []byte
+		v   string
 		err error
 	}
 	result := make(chan answer, 1)
-	go func() { b, err := term.ReadPassword(fd); result <- answer{b, err} }()
-	defer fmt.Fprintln(os.Stderr)
+	go func() {
+		v, err := readMaskedSecret(ctx, os.Stdin, os.Stderr)
+		result <- answer{v, err}
+	}()
+	defer fmt.Fprint(os.Stderr, "\r\n")
 	select {
 	case <-ctx.Done():
 		return "", ctx.Err()
@@ -50,10 +53,7 @@ func readSecret(ctx context.Context, prompt string) (string, error) {
 		if a.err != nil {
 			return "", a.err
 		}
-		v := string(a.b)
-		for i := range a.b {
-			a.b[i] = 0
-		}
+		v := a.v
 		if v == "" {
 			return "", errors.New("empty login input")
 		}
@@ -62,14 +62,14 @@ func readSecret(ctx context.Context, prompt string) (string, error) {
 }
 
 func (terminalAuth) Phone(ctx context.Context) (string, error) {
-	v, err := readSecret(ctx, "Phone number (international format, hidden): ")
+	v, err := readSecret(ctx, "Phone number (international format, masked): ")
 	return strings.TrimSpace(v), err
 }
 func (terminalAuth) Password(ctx context.Context) (string, error) {
-	return readSecret(ctx, "Two-factor password (hidden): ")
+	return readSecret(ctx, "Two-factor password (masked): ")
 }
 func (terminalAuth) Code(ctx context.Context, _ *tg.AuthSentCode) (string, error) {
-	v, err := readSecret(ctx, "Telegram login code (hidden): ")
+	v, err := readSecret(ctx, "Telegram login code (masked): ")
 	return strings.TrimSpace(v), err
 }
 func (terminalAuth) AcceptTermsOfService(context.Context, tg.HelpTermsOfService) error {

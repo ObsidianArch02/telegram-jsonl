@@ -62,3 +62,21 @@ func TestVerifyArchivedPublicChannelRemainsActiveWhenAccessible(t *testing.T) {
 		t.Fatal("accessible archived channel was incorrectly blocked")
 	}
 }
+
+func TestVerifyArchivedChannelKeepsActiveWhenAdminCheckIsRequired(t *testing.T) {
+	a, err := openArchive(t.TempDir(), &failure{})
+	requireOK(t, err)
+	defer a.Close()
+	requireOK(t, a.bind(42))
+	requireOK(t, a.register("channel-10", PeerInfo{Kind: "channel", ID: 10, AccessHash: 100}))
+	r := &receiver{archive: a, self: 42, api: tg.NewClient(telegram.InvokeFunc(func(_ context.Context, in bin.Encoder, _ bin.Decoder) error {
+		if _, ok := in.(*tg.ChannelsGetParticipantsRequest); !ok {
+			t.Fatalf("unexpected archived peer check RPC %T", in)
+		}
+		return tgerr.New(400, "CHAT_ADMIN_REQUIRED")
+	}))}
+	requireOK(t, r.verifyArchivedPeers(context.Background()))
+	if a.blocked("channel-10") {
+		t.Fatal("admin-only verification error incorrectly blocked an active channel")
+	}
+}

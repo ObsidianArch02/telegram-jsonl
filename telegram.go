@@ -538,6 +538,12 @@ func inaccessible(err error) bool {
 	return tgerr.Is(err, "CHANNEL_PRIVATE", "CHANNEL_INVALID", "CHAT_FORBIDDEN", "USER_BANNED_IN_CHANNEL", "PEER_ID_INVALID")
 }
 
+func verificationUnavailable(err error) bool {
+	// channels.getParticipants is an admin-level method for some channels.
+	// CHAT_ADMIN_REQUIRED says nothing about the current user's membership.
+	return tgerr.Is(err, "CHAT_ADMIN_REQUIRED", "CHANNEL_ADMIN_REQUIRED")
+}
+
 // verifyArchivedPeers checks peers that are no longer in the current dialog
 // folders. A folder change is not proof that a public channel became
 // inaccessible, so only an explicit Telegram access error blocks it.
@@ -565,6 +571,10 @@ func (r *receiver) verifyArchivedPeers(ctx context.Context) error {
 			if err := r.archive.block(key, "access revoked or peer unavailable"); err != nil {
 				return err
 			}
+			continue
+		}
+		if verificationUnavailable(err) {
+			log.Printf("Archived peer verification unavailable: peer=%s reason=%v; leaving it active", key, err)
 			continue
 		}
 		return fmt.Errorf("verify archived peer %s: %w", key, err)

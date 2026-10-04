@@ -73,3 +73,33 @@ bash scripts/release.sh build
 检查失败任务，在再次发布前修复源码或仓库策略。
 不要用已经发布的版本号指向不同源码。删除或替换公开标签会破坏来源可追踪性，应优先发布新版本。
 构建和测试不需要 Telegram 凭证，不要把它们存入 Actions secrets。
+
+## Homebrew Formula
+
+稳定标签发布会额外附上生成的 `telegram-jsonl.rb` formula，
+指向本仓库 tap，使用四个 macOS/Linux `.tar.gz` 产物；Windows 继续使用自己的发布包。
+预发布标签不生成稳定版 formula。生成时用真实包文件核对 SHA-256，
+不得为尚未发布的构建编造版本或校验和。
+
+本地生成时，将四个真实发布包与 `SHA256SUMS` 放入 `./dist`，
+填写已有的实际发布标签。下方 `v0.1.0` 仅为例子：
+
+```sh
+go run ./scripts/homebrew \
+  --repository ObsidianArch02/telegram-jsonl \
+  --tag v0.1.0 \
+  --checksums ./dist/SHA256SUMS \
+  --assets ./dist \
+  --output ./Formula/telegram-jsonl.rb
+```
+
+formula 的二进制 URL 指向该标签已有的发布产物，同时保留 `HEAD` 源码构建分支。
+采用发布生成的附件时，从获批准的 Release 取得文件，审查后在 `dev/<topic>` 分支替换
+`Formula/telegram-jsonl.rb`。检查仓库 URL、目标平台、包名和校验和，然后提交完整更新。
+在同一个原子采用提交中，移除两份 README 安装命令的 `--HEAD`，改用普通 `brew install`。
+将未发布修改 rebase 到最新 `main`，按上文要求为准确的上传内容取得批准。
+CI 只生成附件，不自动向 tap 提交、更新 `main`、推送分支或创建 Pull Request。
+
+采用稳定版 formula 之前，初始 formula 需要 `--HEAD`。
+[Homebrew 安装](homebrew.zh-CN.md)包含同仓库 tap 的明确 URL，以及开发版与稳定版命令。
+安装要求已发布的 `main` 包含审查通过的源码和 formula，发布这些内容仍需获批准。

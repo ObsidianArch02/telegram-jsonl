@@ -1,0 +1,49 @@
+class TelegramJsonl < Formula
+  desc "Archive Telegram messages as JSONL and fetch attachments on demand"
+  homepage "{{.Homepage}}"
+  version "{{.Version}}"
+  license "AGPL-3.0-only"
+
+  head do
+    url "{{.Homepage}}.git", branch: "main"
+    depends_on "go" => :build
+  end
+
+  on_macos do
+    on_arm do
+      url "{{.DarwinARM.URL}}"
+      sha256 "{{.DarwinARM.SHA256}}"
+    end
+    on_intel do
+      url "{{.DarwinIntel.URL}}"
+      sha256 "{{.DarwinIntel.SHA256}}"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "{{.LinuxARM.URL}}"
+      sha256 "{{.LinuxARM.SHA256}}"
+    end
+    on_intel do
+      url "{{.LinuxIntel.URL}}"
+      sha256 "{{.LinuxIntel.SHA256}}"
+    end
+  end
+
+  def install
+    if build.head?
+      ENV["CGO_ENABLED"] = "0"
+      system "go", "build", *std_go_args(ldflags: "-s -w -X main.version=#{version}")
+    else
+      bin.install "telegram-jsonl"
+    end
+    pkgshare.install "LICENSE", "NOTICE", "go.mod", "go.sum", "docs", "licenses"
+    pkgshare.install Dir["*.md"]
+  end
+
+  test do
+    assert_match "telegram-jsonl", shell_output("#{bin}/telegram-jsonl --version")
+    assert_match "Usage:", shell_output("#{bin}/telegram-jsonl --help")
+  end
+end

@@ -4,6 +4,10 @@
 
 [Back to README](../README.md)
 
+Examples use `telegram-jsonl` installed on `PATH`, as with Homebrew. For a local
+source build or extracted release, use `./telegram-jsonl` instead; Windows uses
+`telegram-jsonl.exe` with your shell's executable invocation syntax.
+
 ## Login and Sessions
 
 `archive` and `fetch` are separate components of the same executable. They use
@@ -12,8 +16,8 @@ to the same Telegram account. A data directory is bound to one account and
 component; an account or session-namespace mismatch stops the command.
 
 ```sh
-./telegram-jsonl archive --data ./data-tdl --check-client
-./telegram-jsonl archive --data ./data-tdl --login
+telegram-jsonl archive --data ./data-tdl --check-client
+telegram-jsonl archive --data ./data-tdl --login
 ```
 
 `--check-client` checks the integrated client locally without contacting Telegram.
@@ -39,8 +43,8 @@ be reopened by treating the JSONL files as a complete state database. Use fresh
 directories and log in explicitly:
 
 ```sh
-./telegram-jsonl archive --data ./data-sqlite --login --history-days 7
-./telegram-jsonl fetch --archive ./data-sqlite/archive --data ./fetch-sqlite --login --pattern '(?i)\.pdf$' --limit 1
+telegram-jsonl archive --data ./data-sqlite --login --history-days 7
+telegram-jsonl fetch --archive ./data-sqlite/archive --data ./fetch-sqlite --login --pattern '(?i)\.pdf$' --limit 1
 ```
 
 Do not replace or delete the earlier data directories to force an upgrade.
@@ -76,7 +80,7 @@ environment export if you use another shell:
 ```fish
 set -gx TG_API_ID 'YOUR_APP_ID'
 set -gx TG_API_HASH 'YOUR_APP_HASH'
-./telegram-jsonl archive --client native --data ./data-native --login
+telegram-jsonl archive --client native --data ./data-native --login
 ```
 
 Keep contributor-specific credentials in private environment configuration,
@@ -100,16 +104,16 @@ review its inclusion in source and Git history before any public upload.
 | `--history-days` | `30` | Backfill window; `0` disables it, `-1` requests all history. |
 | `--history-since` | Empty | Start date in UTC or an RFC3339 timestamp. |
 
-Run `./telegram-jsonl archive --help`, `search --help`, or `fetch --help` for
+Run `telegram-jsonl archive --help`, `search --help`, or `fetch --help` for
 the authoritative options accepted by your build. Running without a subcommand
 defaults to `archive`.
 
 ### History Windows
 
 ```sh
-./telegram-jsonl archive --data ./data-tdl --history-days 7
-./telegram-jsonl archive --data ./data-tdl --history-days 0
-./telegram-jsonl archive --data ./data-tdl --history-since 2026-09-01
+telegram-jsonl archive --data ./data-tdl --history-days 7
+telegram-jsonl archive --data ./data-tdl --history-days 0
+telegram-jsonl archive --data ./data-tdl --history-since 2026-09-01
 ```
 
 The window is fixed at process startup and includes messages exactly at the
@@ -133,7 +137,7 @@ Suppose `archive` is running with `--data ./data-tdl` and you want a received
 ### 1. Preview Local Matches
 
 ```sh
-./telegram-jsonl search --archive ./data-tdl/archive --pattern '(?i)\.pdf$' --limit 5
+telegram-jsonl search --archive ./data-tdl/archive --pattern '(?i)\.pdf$' --limit 5
 ```
 
 This command is offline and does not download anything. `(?i)` ignores case and
@@ -160,7 +164,7 @@ These fields describe the attachment; they do not mean it has been downloaded.
 Replace `user-7` with the actual peer from the preview:
 
 ```sh
-./telegram-jsonl fetch \
+telegram-jsonl fetch \
   --archive ./data-tdl/archive \
   --data ./fetch-data \
   --peer user-7 \

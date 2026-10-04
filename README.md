@@ -10,15 +10,16 @@ AI assisted in generating this project; review the code before use.
 
 ## Install
 
-Build from the repository root using the Go version specified in [go.mod](go.mod):
+On macOS or Linux, once the reviewed source and formula have been published:
 
 ```sh
-go build -trimpath -o telegram-jsonl .
+brew tap obsidianarch02/telegram-jsonl https://github.com/ObsidianArch02/telegram-jsonl.git
+brew install --HEAD obsidianarch02/telegram-jsonl/telegram-jsonl
 ```
 
-The result is one standalone executable. No separate tdl binary, TDLib installation,
-or runtime source download is required. Tagged [releases](../../releases) include
-precompiled binaries and checksums when the release workflow has run.
+The bootstrap formula builds one standalone executable from published `main`;
+use `--HEAD` until a stable formula is adopted. No separate tdl binary or TDLib is required.
+See [Homebrew, source, and Windows installation](docs/homebrew.md) for details.
 
 ## Quick Start
 
@@ -28,7 +29,7 @@ Login supports **QR code** (default, `--login-method qr`) and **phone/code**
 (`--login-method code`). To use a phone number and Telegram login code instead:
 
 ```sh
-./telegram-jsonl archive --data ./data-tdl --login --login-method code --history-days 7
+telegram-jsonl archive --data ./data-tdl --login --login-method code --history-days 7
 ```
 
 Both modes request your two-factor password when required. `fetch` accepts the
@@ -36,13 +37,13 @@ same login options.
 
 ```sh
 # Archive recent messages and keep receiving updates.
-./telegram-jsonl archive --data ./data-tdl --login --history-days 7
+telegram-jsonl archive --data ./data-tdl --login --history-days 7
 
 # In another terminal, search the local archive without logging in.
-./telegram-jsonl search --archive ./data-tdl/archive --pattern '(?i)\.pdf$' --limit 5
+telegram-jsonl search --archive ./data-tdl/archive --pattern '(?i)\.pdf$' --limit 5
 
 # Download matching PDFs using a separate session for the same account.
-./telegram-jsonl fetch --archive ./data-tdl/archive --data ./fetch-data --login --pattern '(?i)\.pdf$' --limit 1
+telegram-jsonl fetch --archive ./data-tdl/archive --data ./fetch-data --login --pattern '(?i)\.pdf$' --limit 1
 ```
 
 After the first login, reuse each command's data directory and omit `--login`.
@@ -87,6 +88,7 @@ legal compliance. Review the [Telegram disclaimer](DISCLAIMER.md) before use.
 
 ## Documentation
 
+- [Homebrew, source builds, and Windows installation](docs/homebrew.md)
 - [Usage, login, and a complete PDF download example](docs/usage.md)
 - [JSONL format and non-text message coverage](docs/data-format.md)
 - [Lifecycle behavior and operational limits](docs/limitations.md)

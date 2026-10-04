@@ -4,6 +4,10 @@
 
 [返回 README](../README.zh-CN.md)
 
+例子使用通过 Homebrew 等方式安装到 `PATH` 的 `telegram-jsonl`。
+本地源码构建或解压 Release 后，改用 `./telegram-jsonl`；
+Windows 使用 `telegram-jsonl.exe`，按所用终端调整启动语法。
+
 ## 登录与会话
 
 `archive` 与 `fetch` 是同一个可执行文件内的两个独立组件，各自保存账户授权，
@@ -11,8 +15,8 @@
 账户或会话命名空间不匹配时命令停止。
 
 ```sh
-./telegram-jsonl archive --data ./data-tdl --check-client
-./telegram-jsonl archive --data ./data-tdl --login
+telegram-jsonl archive --data ./data-tdl --check-client
+telegram-jsonl archive --data ./data-tdl --login
 ```
 
 `--check-client` 只在本地检查集成客户端，不连接 Telegram。
@@ -33,8 +37,8 @@ Ctrl-C 仅停止进程，不主动登出账户。
 请使用新目录，并明确登录：
 
 ```sh
-./telegram-jsonl archive --data ./data-sqlite --login --history-days 7
-./telegram-jsonl fetch --archive ./data-sqlite/archive --data ./fetch-sqlite --login --pattern '(?i)\.pdf$' --limit 1
+telegram-jsonl archive --data ./data-sqlite --login --history-days 7
+telegram-jsonl fetch --archive ./data-sqlite/archive --data ./fetch-sqlite --login --pattern '(?i)\.pdf$' --limit 1
 ```
 
 不要覆盖或删除旧数据目录来强行升级。
@@ -65,7 +69,7 @@ Telegram 仍可能拒绝该应用身份，无法保证账户或 API 访问可用
 ```fish
 set -gx TG_API_ID 'YOUR_APP_ID'
 set -gx TG_API_HASH 'YOUR_APP_HASH'
-./telegram-jsonl archive --client native --data ./data-native --login
+telegram-jsonl archive --client native --data ./data-native --login
 ```
 
 贡献者个人的凭证应使用私密环境变量配置，不要放进源码、Issue、终端录屏或提交。
@@ -87,15 +91,15 @@ set -gx TG_API_HASH 'YOUR_APP_HASH'
 | `--history-days` | `30` | 历史窗口；`0` 关闭，`-1` 请求全量。 |
 | `--history-since` | 空 | UTC 起始日期或 RFC3339 时间。 |
 
-`./telegram-jsonl archive --help`、`search --help`、`fetch --help`
+`telegram-jsonl archive --help`、`search --help`、`fetch --help`
 列出所用版本实际接受的参数。不带子命令时默认运行 `archive`。
 
 ### 历史窗口
 
 ```sh
-./telegram-jsonl archive --data ./data-tdl --history-days 7
-./telegram-jsonl archive --data ./data-tdl --history-days 0
-./telegram-jsonl archive --data ./data-tdl --history-since 2026-09-01
+telegram-jsonl archive --data ./data-tdl --history-days 7
+telegram-jsonl archive --data ./data-tdl --history-days 0
+telegram-jsonl archive --data ./data-tdl --history-since 2026-09-01
 ```
 
 窗口在进程启动时固定，包含恰好在起点的消息。`YYYY-MM-DD` 按 UTC 零点解释，
@@ -114,7 +118,7 @@ set -gx TG_API_HASH 'YOUR_APP_HASH'
 ### 1. 预览本地匹配
 
 ```sh
-./telegram-jsonl search --archive ./data-tdl/archive --pattern '(?i)\.pdf$' --limit 5
+telegram-jsonl search --archive ./data-tdl/archive --pattern '(?i)\.pdf$' --limit 5
 ```
 
 这一步完全离线，不会下载文件。`(?i)` 表示忽略大小写，`\.pdf$` 匹配 `.pdf` 结尾的文件名。
@@ -140,7 +144,7 @@ set -gx TG_API_HASH 'YOUR_APP_HASH'
 将 `user-7` 替换为预览结果中的真实会话：
 
 ```sh
-./telegram-jsonl fetch \
+telegram-jsonl fetch \
   --archive ./data-tdl/archive \
   --data ./fetch-data \
   --peer user-7 \

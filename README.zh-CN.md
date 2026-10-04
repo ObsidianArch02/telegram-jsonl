@@ -10,14 +10,16 @@
 
 ## 安装
 
-使用 [go.mod](go.mod) 指定的 Go 版本，在仓库根目录构建：
+审查通过的源码和 formula 发布后，可在 macOS 或 Linux 上安装：
 
 ```sh
-go build -trimpath -o telegram-jsonl .
+brew tap obsidianarch02/telegram-jsonl https://github.com/ObsidianArch02/telegram-jsonl.git
+brew install --HEAD obsidianarch02/telegram-jsonl/telegram-jsonl
 ```
 
-构建结果为一个独立可执行文件，无需另外安装 tdl、TDLib，也不在运行时下载源码。
-标签发布工作流运行后，[Release 页面](../../releases)提供各平台预编译文件与校验和。
+初始 formula 从已发布的 `main` 构建一个独立可执行文件，采用稳定版 formula 前需要 `--HEAD`，
+无需额外 tdl 或 TDLib。
+详见 [Homebrew、源码与 Windows 安装](docs/homebrew.zh-CN.md)。
 
 ## 快速开始
 
@@ -27,20 +29,20 @@ go build -trimpath -o telegram-jsonl .
 （`--login-method code`）。使用手机号和 Telegram 登录验证码时运行：
 
 ```sh
-./telegram-jsonl archive --data ./data-tdl --login --login-method code --history-days 7
+telegram-jsonl archive --data ./data-tdl --login --login-method code --history-days 7
 ```
 
 两种方式在需要时都会请求两步验证密码，`fetch` 也接受相同登录参数。
 
 ```sh
 # 归档近期消息，持续接收更新。
-./telegram-jsonl archive --data ./data-tdl --login --history-days 7
+telegram-jsonl archive --data ./data-tdl --login --history-days 7
 
 # 在另一终端搜索本地归档，不需要登录。
-./telegram-jsonl search --archive ./data-tdl/archive --pattern '(?i)\.pdf$' --limit 5
+telegram-jsonl search --archive ./data-tdl/archive --pattern '(?i)\.pdf$' --limit 5
 
 # 使用同一账户的独立会话下载匹配的 PDF。
-./telegram-jsonl fetch --archive ./data-tdl/archive --data ./fetch-data --login --pattern '(?i)\.pdf$' --limit 1
+telegram-jsonl fetch --archive ./data-tdl/archive --data ./fetch-data --login --pattern '(?i)\.pdf$' --limit 1
 ```
 
 首次登录后保留各命令的数据目录，后续运行去掉 `--login`。
@@ -82,6 +84,7 @@ JSONL 表示当前归档状态，不是不可变事件日志。程序离线时�
 
 ## 文档
 
+- [Homebrew、源码构建与 Windows 安装](docs/homebrew.zh-CN.md)
 - [使用、登录与完整 PDF 下载例子](docs/usage.zh-CN.md)
 - [JSONL 格式与非文本消息覆盖](docs/data-format.zh-CN.md)
 - [消息生命周期与运行限制](docs/limitations.zh-CN.md)

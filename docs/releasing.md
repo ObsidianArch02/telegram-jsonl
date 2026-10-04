@@ -86,3 +86,39 @@ Inspect the failed job and fix the source or repository policy before publishing
 again. Do not reuse an already published version for different source. Removing
 or replacing public tags can break provenance; prefer a new version. Keep
 Telegram credentials out of Actions secrets: builds and tests do not need them.
+
+## Homebrew Formula
+
+Stable-tag releases additionally attach a generated `telegram-jsonl.rb` formula.
+It targets this repository's tap and uses the four macOS/Linux `.tar.gz` assets;
+Windows remains available through its release packages. Prerelease tags do not
+produce a stable formula. Generation checks the actual archives against their
+SHA-256 values; it must not invent a version or checksum for an unreleased build.
+
+For local generation, obtain the four actual release archives and `SHA256SUMS`
+in `./dist`. Use the existing release tag; `v0.1.0` below is only an example:
+
+```sh
+go run ./scripts/homebrew \
+  --repository ObsidianArch02/telegram-jsonl \
+  --tag v0.1.0 \
+  --checksums ./dist/SHA256SUMS \
+  --assets ./dist \
+  --output ./Formula/telegram-jsonl.rb
+```
+
+The formula's binary URLs refer to that tag's existing release assets and retain
+a `HEAD` source-build fallback. To adopt the release-generated attachment,
+retrieve it from the approved release and inspect it before replacing
+`Formula/telegram-jsonl.rb` on `dev/<topic>`. Review repository URLs, supported
+targets, archive names, and checksums, then commit the complete formula update.
+In that same atomic adoption commit, update both README installation commands
+to ordinary `brew install` by removing `--HEAD`.
+Rebase unpublished changes onto the latest `main` and obtain approval for the
+exact upload as described above. CI generates the attachment but does not commit
+to the tap, update `main`, push a branch, or open a pull request automatically.
+
+Before a stable formula is adopted, the bootstrap formula requires `--HEAD`.
+See [Homebrew installation](homebrew.md) for the explicit same-repository tap URL
+and development/stable commands. Installation requires the reviewed source and
+formula on published `main`; publishing that state still requires approval.

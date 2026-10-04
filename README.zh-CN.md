@@ -23,6 +23,14 @@ go build -trimpath -o telegram-jsonl .
 
 在一个终端运行归档命令，在手机 Telegram 的**设置 > 设备 > 连接桌面设备**中扫码，
 授权已有账户。
+支持**二维码登录**（默认，`--login-method qr`）和**手机号/验证码登录**
+（`--login-method code`）。使用手机号和 Telegram 登录验证码时运行：
+
+```sh
+./telegram-jsonl archive --data ./data-tdl --login --login-method code --history-days 7
+```
+
+两种方式在需要时都会请求两步验证密码，`fetch` 也接受相同登录参数。
 
 ```sh
 # 归档近期消息，持续接收更新。
@@ -51,7 +59,7 @@ Windows 使用 `telegram-jsonl.exe`，并按所用终端调整启动语法。
 编辑和删除更新仍然处理。
 
 未设置凭证环境变量时，客户端在源码层面集成经修改的 [tdl](https://github.com/iyear/tdl) 登录逻辑，
-使用 tdl 的内置应用身份，用户无需自行申请 API 凭证。
+使用本项目配置的应用身份，用户无需自行申请 API 凭证。
 Telegram 协议仍然需要应用身份，服务端也可能拒绝它。
 归档器的 `--client auto` 在检测到凭证环境变量时选择 native 模式。
 也可通过 `--client native` 使用自己的应用凭证，详见[配置](docs/usage.zh-CN.md#配置)。

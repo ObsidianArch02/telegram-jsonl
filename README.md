@@ -24,6 +24,15 @@ precompiled binaries and checksums when the release workflow has run.
 
 Run the archive command in one terminal. Scan the QR code with your existing
 Telegram account under **Settings > Devices > Link Desktop Device**.
+Login supports **QR code** (default, `--login-method qr`) and **phone/code**
+(`--login-method code`). To use a phone number and Telegram login code instead:
+
+```sh
+./telegram-jsonl archive --data ./data-tdl --login --login-method code --history-days 7
+```
+
+Both modes request your two-factor password when required. `fetch` accepts the
+same login options.
 
 ```sh
 # Archive recent messages and keep receiving updates.
@@ -52,7 +61,7 @@ The default history window is 30 days. `--history-days 0` disables backfill;
 are not removed when the window shrinks. Editing and deletion updates still apply.
 
 Without credential environment variables, the client integrates modified [tdl](https://github.com/iyear/tdl) login
-code at source level and uses tdl's built-in application identity. End users do
+code at source level and uses the project's configured application identity. End users do
 not need to apply for API credentials. Telegram still requires an application
 identity and can reject it. Archive's `--client auto` selects native mode when
 credential environment variables are present. You may explicitly use your credentials with

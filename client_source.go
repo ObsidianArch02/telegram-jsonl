@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"os"
@@ -85,16 +86,19 @@ func validateLoginOptions(c sourceConfig, login, reset bool, method string) erro
 }
 
 func loginSource(ctx context.Context, client *telegram.Client, c sourceConfig, login bool, method string, tokens qrlogin.LoggedIn) (*auth.Status, error) {
+	log.Print("Checking saved Telegram authorization")
 	status, err := client.Auth().Status(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if status.Authorized {
+		log.Print("Saved Telegram authorization reused")
 		return status, nil
 	}
 	if !login {
 		return nil, errors.New("session unauthorized; explicitly run with --login")
 	}
+	log.Printf("Telegram authorization required; starting %s login", method)
 	if method == "qr" {
 		err = tdllogin.QRLogin(ctx, client, tokens, terminalAuth{}, os.Stderr)
 	} else {
@@ -103,7 +107,11 @@ func loginSource(ctx context.Context, client *telegram.Client, c sourceConfig, l
 	if err != nil {
 		return nil, err
 	}
-	return client.Auth().Status(ctx)
+	status, err = client.Auth().Status(ctx)
+	if err == nil && status.Authorized {
+		log.Print("Telegram login successful; authorization saved")
+	}
+	return status, err
 }
 
 func printSourceCheck(c sourceConfig) {

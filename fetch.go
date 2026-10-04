@@ -233,6 +233,7 @@ type byteLimitWriter struct {
 	Writer    io.Writer
 	Remaining int64
 	Written   int64
+	Progress  func(int64)
 }
 
 func (w *byteLimitWriter) Write(b []byte) (int, error) {
@@ -242,10 +243,18 @@ func (w *byteLimitWriter) Write(b []byte) (int, error) {
 	n, err := w.Writer.Write(b)
 	w.Remaining -= int64(n)
 	w.Written += int64(n)
+	if n > 0 && w.Progress != nil {
+		w.Progress(w.Written)
+	}
 	return n, err
 }
 
 func (f *fetchRunner) download(ctx context.Context, record Record, peer PeerInfo, output string, maxBytes int64) (result fetchResult) {
+	started := time.Now()
+	log.Printf("Attachment check started: peer=%s message_id=%d", record.Peer, record.MessageID)
+	defer func() {
+		log.Printf("Attachment result: peer=%s message_id=%d status=%s bytes=%d elapsed=%s", result.Peer, result.MessageID, result.Status, result.Size, time.Since(started).Round(time.Millisecond))
+	}()
 	result = fetchResult{Peer: record.Peer, MessageID: record.MessageID, Status: "skipped"}
 	m, err := f.message(ctx, record, peer)
 	if err != nil {
@@ -289,6 +298,7 @@ func (f *fetchRunner) download(ctx context.Context, record Record, peer PeerInfo
 	var bytes int64
 	var digest string
 	for attempt := 0; attempt < 2; attempt++ {
+		log.Printf("Attachment transfer starting: peer=%s message_id=%d attempt=%d expected_bytes=%d", record.Peer, record.MessageID, attempt+1, a.Size)
 		if err := tmp.Truncate(0); err != nil {
 			result.Status = "error"
 			result.Reason = err.Error()
@@ -307,6 +317,13 @@ func (f *fetchRunner) download(ctx context.Context, record Record, peer PeerInfo
 		}
 		hash := sha256.New()
 		writer := &byteLimitWriter{Writer: io.MultiWriter(tmp, hash), Remaining: maxBytes}
+		lastProgress := time.Now()
+		writer.Progress = func(written int64) {
+			if time.Since(lastProgress) >= 5*time.Second {
+				log.Printf("Attachment transfer progress: peer=%s message_id=%d bytes=%d expected_bytes=%d", record.Peer, record.MessageID, written, a.Size)
+				lastProgress = time.Now()
+			}
+		}
 		_, err = downloader.NewDownloader().Download(client, a.Location).Stream(ctx, writer)
 		closeClient()
 		if err == nil {
@@ -314,6 +331,7 @@ func (f *fetchRunner) download(ctx context.Context, record Record, peer PeerInfo
 			break
 		}
 		if attempt == 0 && tgerr.Is(err, "FILE_REFERENCE_EXPIRED", "FILE_REFERENCE_INVALID") {
+			log.Printf("Attachment reference expired; refreshing once: peer=%s message_id=%d", record.Peer, record.MessageID)
 			refreshed, refreshErr := f.message(ctx, record, peer)
 			if refreshErr != nil {
 				if !errors.Is(refreshErr, errAttachmentUnavailable) {
@@ -341,6 +359,7 @@ func (f *fetchRunner) download(ctx context.Context, record Record, peer PeerInfo
 	}
 	// Validate again immediately before committing the file, including a deletion
 	// or protection change while transferring. This component never writes JSONL.
+	log.Printf("Attachment transfer complete; rechecking availability: peer=%s message_id=%d bytes=%d", record.Peer, record.MessageID, bytes)
 	current, err := f.message(ctx, record, peer)
 	if err != nil {
 		if !errors.Is(err, errAttachmentUnavailable) {
@@ -443,6 +462,7 @@ func runFetch(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	log.Printf("Fetch starting: client=%s matches=%d output=%q interval=%s max_file_bytes=%d timezone=%s", cfg.Mode, len(matches), out, *interval, *maxBytes, time.Now().Format("MST -07:00"))
 	if err := privateDir(d); err != nil {
 		return err
 	}
@@ -465,6 +485,7 @@ func runFetch(args []string) error {
 	loginDispatcher := tg.NewUpdateDispatcher()
 	tokens := qrlogin.OnLoginToken(loginDispatcher)
 	client := telegram.NewClient(cfg.APIID, cfg.APIHash, telegram.Options{SessionStorage: storage, Resolver: resolver, Middlewares: []telegram.Middleware{gate}, UpdateHandler: loginDispatcher, Device: telegram.DeviceConfig{DeviceModel: "Local attachment fetch", AppVersion: "0.2.0", SystemLangCode: "en", LangCode: "en"}})
+	log.Print("Connecting downloader to Telegram")
 	err = client.Run(ctx, func(ctx context.Context) error {
 		status, err := loginSource(ctx, client, cfg, *login, *loginMethod, tokens)
 		if err != nil {
@@ -481,8 +502,8 @@ func runFetch(args []string) error {
 			return tg.NewClient(gate.Handle(conn)), func() { _ = conn.Close() }, nil
 		}}
 		enc := json.NewEncoder(os.Stdout)
-		failed := 0
-		for _, record := range matches {
+		failed, downloaded, skipped := 0, 0, 0
+		for index, record := range matches {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -490,14 +511,21 @@ func runFetch(args []string) error {
 			if !ok {
 				return errors.New("peer missing from archive metadata")
 			}
+			log.Printf("Processing attachment: %d/%d peer=%s message_id=%d", index+1, len(matches), record.Peer, record.MessageID)
 			result := runner.download(ctx, record, p, out, *maxBytes)
-			if result.Status == "error" {
+			switch result.Status {
+			case "error":
 				failed++
+			case "downloaded":
+				downloaded++
+			case "skipped":
+				skipped++
 			}
 			if err := enc.Encode(result); err != nil {
 				return err
 			}
 		}
+		log.Printf("Fetch complete: downloaded=%d skipped=%d failed=%d", downloaded, skipped, failed)
 		if failed > 0 {
 			return fmt.Errorf("%d attachment downloads failed; see result statuses", failed)
 		}
@@ -507,6 +535,7 @@ func runFetch(args []string) error {
 		return err
 	}
 	if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+		log.Print("Fetch stopped")
 		return nil
 	}
 	return err

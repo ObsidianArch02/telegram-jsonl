@@ -150,11 +150,14 @@ func runArchive(args []string) error {
 	defer stop()
 	ctx, cancel := context.WithCancelCause(signalCtx)
 	defer cancel(nil)
+	log.Printf("Archive starting: client=%s data=%q interval=%s batch=%d sync_every=%s once=%t timezone=%s", cfg.Mode, *data, *interval, *batch, *every, *once, time.Now().Format("MST -07:00"))
 	fail := &failure{cancel: cancel}
 	store, err := openArchive(filepath.Join(*data, "archive"), fail)
 	if err != nil {
 		return err
 	}
+	peers, records := store.counts()
+	log.Printf("Loaded archive: peers=%d records=%d", peers, records)
 	protocol, err := openProtocolStore(filepath.Join(*data, "updates.json"), fail)
 	if err != nil {
 		return err
@@ -193,6 +196,7 @@ func runArchive(args []string) error {
 		}),
 		Device: telegram.DeviceConfig{DeviceModel: "Local JSONL archive", AppVersion: "0.1.0", SystemLangCode: "en", LangCode: "en"},
 	})
+	log.Print("Connecting to Telegram")
 	err = client.Run(ctx, func(ctx context.Context) error {
 		status, err := loginSource(ctx, client, cfg, *login, *loginMethod, tokens)
 		if err != nil {
@@ -219,12 +223,25 @@ func runArchive(args []string) error {
 			return manager.Run(gctx, r.api, r.self, updates.AuthOptions{OnStart: func(context.Context) { enabled.Store(true); close(ready) }})
 		})
 		group.Go(func() error {
+			ticker := time.NewTicker(time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-gctx.Done():
+					return gctx.Err()
+				case <-ticker.C:
+					peers, records := store.counts()
+					log.Printf("Archive status: stored_peers=%d records=%d", peers, records)
+				}
+			}
+		})
+		group.Go(func() error {
 			select {
 			case <-gctx.Done():
 				return gctx.Err()
 			case <-ready:
 			}
-			log.Print("Receiving live updates; saved session reused, no read receipts sent")
+			log.Print("Live update receiver started; no read receipts sent")
 			if err := r.syncLoop(gctx, *every, *once); err != nil {
 				return err
 			}
@@ -243,7 +260,11 @@ func runArchive(args []string) error {
 		return err
 	}
 	if signalCtx.Err() != nil && errors.Is(err, context.Canceled) {
+		log.Print("Archive stopped")
 		return nil
+	}
+	if err == nil {
+		log.Print("Archive synchronization finished")
 	}
 	return err
 }
@@ -270,7 +291,8 @@ func run() error {
 }
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.LUTC)
+	log.SetOutput(os.Stderr)
+	log.SetFlags(log.LstdFlags)
 	if err := run(); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return

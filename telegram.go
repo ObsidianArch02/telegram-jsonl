@@ -281,6 +281,8 @@ func unpack(result tg.MessagesMessagesClass) (messageResult, error) {
 func (r *receiver) discover(ctx context.Context) error {
 	// Explicitly enumerate both the main folder and Telegram's archived folder.
 	for _, folder := range []int{0, 1} {
+		count := 0
+		log.Printf("Discovering dialogs: folder=%d", folder)
 		iter := dialogs.NewQueryBuilder(r.api).GetDialogs().FolderID(folder).BatchSize(r.batch).Iter()
 		for iter.Next(ctx) {
 			d := iter.Value()
@@ -314,16 +316,24 @@ func (r *receiver) discover(ctx context.Context) error {
 			if err := r.observe(nil, chats); err != nil {
 				return err
 			}
+			count++
+			if count%r.batch == 0 {
+				log.Printf("Dialog discovery progress: folder=%d processed=%d", folder, count)
+			}
 		}
 		if err := iter.Err(); err != nil {
 			return err
 		}
+		log.Printf("Dialog discovery complete: folder=%d processed=%d", folder, count)
 	}
 	return nil
 }
 
 func (r *receiver) reconcile(ctx context.Context, key string, p PeerInfo) error {
 	ids := r.archive.ids(key)
+	if len(ids) > 0 {
+		log.Printf("Checking archived messages: peer=%s records=%d", key, len(ids))
+	}
 	for start := 0; start < len(ids); start += r.batch {
 		if r.archive.blocked(key) {
 			return nil
@@ -370,6 +380,7 @@ func (r *receiver) reconcile(ctx context.Context, key string, p PeerInfo) error 
 		if err := r.records(messages.GetMessages(), false, fence); err != nil {
 			return err
 		}
+		log.Printf("Reconciliation progress: peer=%s checked=%d/%d missing=%d", key, end, len(ids), len(deleted))
 	}
 	return nil
 }
@@ -384,6 +395,12 @@ func (r *receiver) history(ctx context.Context, key string, p PeerInfo, incremen
 		offset = 0
 		minID = p.Newest
 	}
+	mode := "backfill"
+	if incremental {
+		mode = "catchup"
+	}
+	log.Printf("History scan started: peer=%s mode=%s offset=%d min_id=%d", key, mode, offset, minID)
+	pages, scanned := 0, 0
 	for {
 		if r.archive.blocked(key) {
 			return nil
@@ -417,6 +434,9 @@ func (r *receiver) history(ctx context.Context, key string, p PeerInfo, incremen
 		if err := r.records(eligible, false, fence); err != nil {
 			return err
 		}
+		pages++
+		scanned += len(page)
+		log.Printf("History page processed: peer=%s mode=%s page=%d fetched=%d in_window=%d scanned=%d boundary=%t", key, mode, pages, len(page), len(eligible), scanned, reachedBoundary)
 		next := 0
 		for _, m := range messages.GetMessages() {
 			id := m.GetID()
@@ -431,6 +451,7 @@ func (r *receiver) history(ctx context.Context, key string, p PeerInfo, incremen
 			}
 		}
 		if next == 0 || reachedBoundary {
+			log.Printf("History scan read complete: peer=%s mode=%s pages=%d scanned=%d newest_id=%d", key, mode, pages, scanned, newest)
 			if incremental {
 				return r.archive.checkpoint(key, p.Offset, p.HistoryDone, newest)
 			}
@@ -453,6 +474,8 @@ func inaccessible(err error) bool {
 }
 
 func (r *receiver) sync(ctx context.Context) error {
+	started := time.Now()
+	log.Print("History and deletion reconciliation starting")
 	if err := r.discover(ctx); err != nil {
 		return err
 	}
@@ -469,11 +492,13 @@ func (r *receiver) sync(ctx context.Context) error {
 	sort.Strings(keys)
 	log.Printf("Synchronizing %d accessible peers", len(keys))
 	// Purge missed deletions and edits before spending time on the initial history backlog.
-	for _, key := range keys {
+	for index, key := range keys {
 		p := peers[key]
 		if p.Kind != "chat" && p.AccessHash == 0 && p.ID != r.self {
+			log.Printf("Skipping peer without access hash: peer=%s", key)
 			continue
 		}
+		log.Printf("Reconciling peer: %d/%d peer=%s", index+1, len(keys), key)
 		if err := r.reconcile(ctx, key, p); err != nil {
 			if inaccessible(err) {
 				if err := r.archive.block(key, "access revoked"); err != nil {
@@ -520,7 +545,7 @@ func (r *receiver) sync(ctx context.Context) error {
 			}
 		}
 	}
-	log.Print("History and deletion reconciliation complete")
+	log.Printf("History and deletion reconciliation complete: peers=%d elapsed=%s", len(keys), time.Since(started).Round(time.Millisecond))
 	return nil
 }
 
@@ -532,6 +557,7 @@ func (r *receiver) syncLoop(ctx context.Context, every time.Duration, once bool)
 		if once {
 			return nil
 		}
+		log.Printf("Waiting for updates; next reconciliation at %s", time.Now().Add(every).In(time.Local).Format(time.RFC3339))
 		timer := time.NewTimer(every)
 		select {
 		case <-ctx.Done():
@@ -539,6 +565,7 @@ func (r *receiver) syncLoop(ctx context.Context, every time.Duration, once bool)
 			return ctx.Err()
 		case <-r.resync:
 			timer.Stop()
+			log.Print("Update gap triggered an early reconciliation")
 		case <-timer.C:
 		}
 	}

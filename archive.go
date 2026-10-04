@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -188,6 +189,15 @@ func (a *archive) peers() map[string]PeerInfo {
 	return out
 }
 
+func (a *archive) counts() (peers, records int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, rows := range a.rows {
+		records += len(rows)
+	}
+	return len(a.meta.Peers), records
+}
+
 func (a *archive) peer(key string) (PeerInfo, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -272,7 +282,7 @@ func (a *archive) upsert(records []Record, live bool, fence uint64) error {
 	if err := a.failure.check(); err != nil {
 		return err
 	}
-	changed := map[string]bool{}
+	changed := map[string][2]int{}
 	for _, r := range records {
 		if !validPeer.MatchString(r.Peer) || r.MessageID <= 0 || r.AccountID != a.meta.AccountID {
 			return a.failure.report(errors.New("invalid record identity"))
@@ -297,12 +307,19 @@ func (a *archive) upsert(records []Record, live bool, fence uint64) error {
 			continue
 		}
 		a.rows[r.Peer][r.MessageID] = r
-		changed[r.Peer] = true
+		counts := changed[r.Peer]
+		if exists {
+			counts[1]++
+		} else {
+			counts[0]++
+		}
+		changed[r.Peer] = counts
 	}
-	for peer := range changed {
+	for peer, counts := range changed {
 		if err := a.flush(peer); err != nil {
 			return err
 		}
+		log.Printf("JSONL saved: peer=%s added=%d updated=%d total=%d live=%t", peer, counts[0], counts[1], len(a.rows[peer]), live)
 	}
 	return nil
 }
@@ -354,20 +371,21 @@ func (a *archive) remove(peer string, ids []int, live bool, fence uint64) error 
 		if peer == "" && strings.HasPrefix(key, "channel-") {
 			continue
 		}
-		changed := false
+		removed := 0
 		for _, id := range accepted {
 			if live {
 				a.touch(key, id)
 			}
 			if _, ok := rows[id]; ok {
 				delete(rows, id)
-				changed = true
+				removed++
 			}
 		}
-		if changed {
+		if removed > 0 {
 			if err := a.flush(key); err != nil {
 				return err
 			}
+			log.Printf("JSONL deletion saved: peer=%s removed=%d total=%d live=%t", key, removed, len(rows), live)
 		}
 	}
 	return nil
@@ -386,10 +404,14 @@ func (a *archive) block(peer, reason string) error {
 	if err := a.saveMeta(); err != nil {
 		return err
 	}
-	if len(a.rows[peer]) > 0 {
+	removed := len(a.rows[peer])
+	if removed > 0 {
 		a.rows[peer] = map[int]Record{}
-		return a.flush(peer)
+		if err := a.flush(peer); err != nil {
+			return err
+		}
 	}
+	log.Printf("Archive peer excluded: peer=%s removed=%d reason=%s", peer, removed, reason)
 	return nil
 }
 

@@ -62,5 +62,5 @@ func (h historyConfig) String() string {
 	if h.Since.IsZero() {
 		return "all accessible history"
 	}
-	return fmt.Sprintf("messages dated on or after %s", h.Since.Format(time.RFC3339))
+	return fmt.Sprintf("messages dated on or after %s", h.Since.In(time.Local).Format(time.RFC3339))
 }

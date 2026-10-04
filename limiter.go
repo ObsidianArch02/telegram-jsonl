@@ -27,6 +27,9 @@ func openGate(path string, interval time.Duration, fail *failure) (*rpcGate, err
 	if err := readJSON(path, &g.cooldown); err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
+	if time.Until(g.cooldown) > 0 {
+		log.Printf("Resuming saved FLOOD_WAIT; RPC calls paused until %s", g.cooldown.In(time.Local).Format(time.RFC3339))
+	}
 	return g, nil
 }
 
@@ -69,7 +72,7 @@ func (g *rpcGate) Handle(next tg.Invoker) telegram.InvokeFunc {
 			if err := writeJSON(g.path, g.cooldown); err != nil {
 				return g.failure.report(err)
 			}
-			log.Printf("Telegram requested FLOOD_WAIT; pausing RPC calls for %s", delay+time.Second)
+			log.Printf("Telegram requested FLOOD_WAIT; pausing RPC calls for %s until %s", delay+time.Second, g.cooldown.In(time.Local).Format(time.RFC3339))
 		}
 	}
 }

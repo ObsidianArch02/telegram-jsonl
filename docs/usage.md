@@ -30,13 +30,27 @@ sessions are reused even when `--login` is present. Only use
 The application does not register new accounts or automatically retry failed logins.
 Ctrl-C stops the process without logging the account out.
 
+## Runtime Logs
+
+Operational logs go to stderr with timestamps in the computer's local timezone.
+Set `TZ=Asia/Shanghai` in the process environment to select a different timezone.
+History boundaries, next synchronization times, and FLOOD_WAIT deadlines in logs
+use that timezone too. JSONL dates and JSON output on stdout remain in UTC.
+
+Logs report authorization, dialog discovery, history pages, reconciliation,
+successful JSONL changes, and attachment results. The archive reports stored
+peer/message counts every minute. Download transfers report byte progress at
+most once every five seconds. Logs omit message text, captions, passwords,
+login tokens, and application credentials; peer/message identifiers are still
+personal metadata. Reasons for skipped or failed downloads are in stdout JSON.
+
 ## Configuration
 
 Without credential environment variables, archive's default `--client auto`
 selects tdl. If either `TG_API_ID` or `TG_API_HASH` is present, it selects native
 mode and requires both valid values. Fetch defaults to `--client tdl`; use
 `--client native` explicitly for native downloads. The tdl mode uses a source-level port of its login integration and its
-built-in application identity. It does not execute a helper process. Telegram
+project-configured application identity. It does not execute a helper process. Telegram
 may still reject the application identity; no account or API access is guaranteed.
 
 For your own application, obtain credentials at [my.telegram.org](https://my.telegram.org).

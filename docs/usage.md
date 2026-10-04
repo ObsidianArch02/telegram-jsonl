@@ -49,6 +49,11 @@ telegram-jsonl fetch --archive ./data-sqlite/archive --data ./fetch-sqlite --log
 
 Do not replace or delete the earlier data directories to force an upgrade.
 The [data format](data-format.md) describes the SQLite layout and query examples.
+For a one-time conversion of an existing schema 1 directory, use the standalone
+script at `/tmp/telegram-jsonl-migration-20261004/migrate.py`. Stop archive and
+fetch first, run its `--dry-run`, then convert into fresh destination directories;
+the source directories remain unchanged. Its `usage.txt` documents lock checks,
+WAL-aware snapshots, session preservation, and validation limits.
 
 ## Runtime Logs
 
@@ -100,6 +105,7 @@ review its inclusion in source and Git history before any public upload.
 | `--interval` | `2s` | Minimum start interval for business RPCs; minimum `1s`. |
 | `--batch` | `50` | Messages or dialogs per request; range `1` to `100`. |
 | `--sync-every` | `6h` | Periodic history and deletion checks; minimum `10m`. |
+| `--reconcile-window` | `1h` | Edit/deletion checks look back one hour; duration or `all`. |
 | `--once` | `false` | Complete one synchronization pass, then exit. |
 | `--history-days` | `30` | Backfill window; `0` disables it, `-1` requests all history. |
 | `--history-since` | Empty | Start date in UTC or an RFC3339 timestamp. |
@@ -128,6 +134,13 @@ This setting limits history pagination, not retention. Live updates and update
 gap recovery continue, and can include older messages. Existing records are
 still checked for edits and deletions. `FLOOD_WAIT` deadlines are persisted;
 restarting does not skip the required wait.
+
+`--reconcile-window` limits the existing-message edit/deletion pass. Its default
+is one hour before the synchronization cycle starts. The cycle stores its start
+time and peer position in runtime SQLite, so a restart resumes the same window
+instead of silently moving the boundary. Use `--reconcile-window all` to check
+all retained messages. A shorter window can miss an older remote edit or deletion
+until a wider window is used.
 
 ## Search and Download a PDF
 

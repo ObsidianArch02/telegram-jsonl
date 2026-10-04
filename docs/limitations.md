@@ -34,6 +34,20 @@ current JSONL while applying its persisted deletion and exclusion state.
 JSONL messages remain the message store. SQLite is not a second copy of message
 bodies, and a ledger entry does not restore an unavailable message.
 
+Synchronization cycles persist their start time, phase, peer position, per-page
+history cursor, reconciliation cursor, and JSONL replacement receipts. A restart
+resumes the recorded cycle and does not silently move its time boundary. The
+default edit/deletion reconciliation window is one hour; use `--reconcile-window all`
+when a full retained-message check is required. A shorter window can intentionally
+leave older remote edits or deletions undiscovered.
+
+The update manager's protocol cursors are persisted separately from the archive
+cycle. Difference responses are handled through a durable boundary before the
+upstream manager advances its cursor; a failed archive callback leaves the response
+available for retry. This still cannot make JSONL, two SQLite files, and Telegram's
+in-memory update queues one cross-file transaction, so the persisted cycle and
+receipts are required for crash recovery.
+
 Removal covers the active files managed by this program. External copies, backups,
 filesystem snapshots, old open file descriptors, and disk remnants are outside
 its control. Atomic replacement is not secure erasure.

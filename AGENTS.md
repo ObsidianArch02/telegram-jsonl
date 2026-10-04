@@ -81,6 +81,10 @@ use the rules below and report that their hook could not be run.
   message bodies, captions, or file references in logs or diagnostic diffs.
 - Use synthetic data in tests and examples. Real-account access requires user
   authorization; offline checks must remain offline.
+- One-off schema migrations belong in a private temporary directory when requested;
+  do not add a generic migration command to the unreleased product. Migration tools
+  must write fresh destinations, leave sources untouched, acquire source locks, and
+  use WAL-aware SQLite backups.
 - The maintainer explicitly authorized the existing application-credential
   commit. Preserve that decision without exposing values in tool output. Do not
   introduce additional private credentials into Git without an explicit request.
@@ -103,6 +107,10 @@ use the rules below and report that their hook could not be run.
   authorizations bound to the same account.
 - Keep history backfill configurable and bounded by default. Honor RPC pacing,
   persisted FLOOD_WAIT deadlines, live updates, edits, and deletions.
+- Keep synchronization resumable: persist the cycle start boundary, phase, peer
+  position, per-page cursors, reconciliation position, and JSONL replacement
+  receipts. The default edit/deletion reconciliation window is one hour; expose
+  an explicit `all` option for full retained-message checks.
 - Respect self-destructing, protected, restricted, inaccessible, and paid
   content. Revalidate attachments through authorized APIs before downloading
   and before committing a completed download.

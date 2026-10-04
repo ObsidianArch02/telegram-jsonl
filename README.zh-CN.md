@@ -56,7 +56,7 @@ Windows 使用 `telegram-jsonl.exe`，并按所用终端调整启动语法。
 | `search` | 用 Go 正则表达式搜索本地正文、文件名和结构化信息。 |
 | `fetch` | 下载选中附件后退出，不改写 JSONL。 |
 
-聊天消息继续保存在 JSONL，SQLite 保存会话名称、附件索引、下载记录和运行状态，
+聊天消息继续保存在 JSONL，SQLite 将高频运行状态与低频会话属性、附件索引和下载记录分开保存，
 详见[数据布局](docs/data-format.zh-CN.md)。
 
 默认补拉最近 30 天。`--history-days 0` 关闭历史补拉，

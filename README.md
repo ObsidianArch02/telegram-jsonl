@@ -57,8 +57,8 @@ On Windows, use `telegram-jsonl.exe` with the command syntax appropriate to your
 | `search` | Search local text, filenames, and structured metadata with Go regular expressions. |
 | `fetch` | Download selected attachments, then exit without modifying JSONL. |
 
-Messages stay in JSONL. SQLite stores conversation names, attachment indexes,
-download records, and runtime state; see the [data layout](docs/data-format.md).
+Messages stay in JSONL. SQLite separates hot runtime state from cold conversation
+properties, attachment indexes, and download records; see the [data layout](docs/data-format.md).
 
 The default history window is 30 days. `--history-days 0` disables backfill;
 `--history-days -1` explicitly requests all accessible history. Existing records

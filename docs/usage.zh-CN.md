@@ -43,6 +43,9 @@ telegram-jsonl fetch --archive ./data-sqlite/archive --data ./fetch-sqlite --log
 
 不要覆盖或删除旧数据目录来强行升级。
 [数据格式](data-format.zh-CN.md)说明 SQLite 布局和查询例子。
+如果需要把已有 schema 1 目录一次性转换为新格式，可使用独立脚本
+`/tmp/telegram-jsonl-migration-20261004/migrate.py`。先停止归档器和下载器，运行 `--dry-run`，
+再转换到全新的目标目录；源目录保持不变。锁检查、包含 WAL 的快照、会话保留和校验限制见同目录 `usage.txt`。
 
 ## 运行日志
 
@@ -87,6 +90,7 @@ telegram-jsonl archive --client native --data ./data-native --login
 | `--interval` | `2s` | 业务 RPC 最小启动间隔，最低 `1s`。 |
 | `--batch` | `50` | 每次请求的消息或会话数，范围 `1` 至 `100`。 |
 | `--sync-every` | `6h` | 定期历史和删除核对，最低 `10m`。 |
+| `--reconcile-window` | `1h` | 编辑/删除核对窗口，默认回看一小时；可用时长或 `all`。 |
 | `--once` | `false` | 完成一次同步后退出。 |
 | `--history-days` | `30` | 历史窗口；`0` 关闭，`-1` 请求全量。 |
 | `--history-since` | 空 | UTC 起始日期或 RFC3339 时间。 |
@@ -109,6 +113,11 @@ telegram-jsonl archive --data ./data-tdl --history-since 2026-09-01
 
 该设置限制历史分页，不是保留期限。实时更新和差分恢复仍会运行，也可能带回更早的消息。
 已有记录继续核对编辑和删除。`FLOOD_WAIT` 等待截止时间会持久化，重启不会绕过等待。
+
+`--reconcile-window` 限制已有消息的编辑/删除核对范围，默认从每个同步周期开始时间向前回看一小时。
+周期起点和会话位置会保存到运行时 SQLite，因此重启会继续同一个窗口，不会静默改变边界。
+使用 `--reconcile-window all` 核对所有保留消息。窗口缩短后，较早的远端编辑或删除可能不会被发现，
+直到再次使用更大的窗口。
 
 ## 搜索并下载一份 PDF
 

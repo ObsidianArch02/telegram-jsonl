@@ -12,9 +12,10 @@
 data-tdl/
   .lock                 单进程会话锁
   session.json          账户授权，需按凭证保护
-  state.sqlite          客户端绑定、更新游标、频道 hash 与等待状态
+  state.sqlite          高频运行状态：客户端绑定、更新游标、同步任务、
+                        回执、删除标记和等待状态
   archive/
-    index.sqlite        归档元数据、会话、媒体索引与已下载文件记录
+    index.sqlite        低频属性：名称、用户名、access hash、媒体索引与已下载文件记录
     user-123.jsonl      私聊
     chat-456.jsonl      普通群
     channel-789.jsonl   超级群或频道
@@ -34,8 +35,9 @@ data-tdl/
 
 不要把状态目录作为诊断附件分享。内部元数据含访问所需信息，不是下游数据格式。
 限制文件权限不等于加密，还需使用系统访问控制和磁盘保护。
-`index.sqlite` 是内部私密数据库，除了名称和文件路径，还包含会话 access hash，
-不是公开的会话名称导出文件，不应直接对外发布整个数据库。
+`state.sqlite` 是高频运行数据库，`index.sqlite` 是低频属性数据库，保存名称、用户名、
+会话 access hash、媒体和文件路径。两者有意分开，频繁更新游标/任务不会重复写入稳定的会话属性。
+两者都不是公开的会话名称导出文件，不应直接对外发布整个数据库。
 数据库及其 `-wal`、`-shm` 附属文件都需要保护。
 SQLite 备份 API 可生成一致的数据库快照。
 若要把 JSONL 和数据库作为完整归档备份，请先停止归档器和下载器，再复制其状态。
@@ -50,7 +52,7 @@ SQLite 只读连接也可能创建 WAL/SHM 协调文件。
 
 | 表 | 用途 |
 | --- | --- |
-| `state` | 序列化内部状态；其中 `archive_metadata` 键保存账户绑定、会话访问信息、历史进度、删除标记和被阻止会话。 |
+| `state` | 高频序列化状态；`archive_metadata` 保存账户绑定、peer ID 和历史进度，`sync_cycle`、`sync_job:*` 与 `jsonl_intent:*` 保存可恢复任务和崩溃回执。名称与 access hash 从 `index.sqlite` 关联。 |
 | `peers` | `peer`、`kind`、数字 `id`、显示名称 `name`、`username` 与 `is_dialog`。 |
 | `media` | 当前附件记录的 `peer`、`message_id`、`media_id`、`media_kind`、`file_name`、`mime_type` 与 `size_bytes`。 |
 | `files` | 已完成下载的 `peer`、`message_id`、`media_id`、`media_kind`、本地 `path`、`size_bytes`、`sha256` 与 `downloaded_at`。 |
@@ -63,8 +65,9 @@ SQLite 只读连接也可能创建 WAL/SHM 协调文件。
 UTF-8 名称与稳定 ID 一同保存，名称或用户名不构成唯一账户标识。
 数据库不复制消息正文，也不提供 SQLite 全文搜索。
 搜索仍然使用正则表达式检查本地 JSONL 消息。
-各组件自己的 `state.sqlite` 在 `state` 表的键值记录中保存客户端绑定、更新状态和等待状态，
-登录授权仍在 `session.json` 中。
+各组件自己的 `state.sqlite` 在 `state` 表的键值记录中保存客户端绑定、更新状态、等待状态、
+同步任务和崩溃回执，登录授权仍在 `session.json` 中。SQLite schema 版本为 2，旧 JSON 状态或
+schema 1 不会自动迁移。
 
 如果安装了 `sqlite3`，可只读查询已知会话名称：
 

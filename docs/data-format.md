@@ -12,9 +12,11 @@ Each component keeps its state in its own data directory:
 data-tdl/
   .lock                 Single-process session lock
   session.json          Account authorization; treat as a credential
-  state.sqlite          Client binding, update cursors, channel hashes, cooldown
+  state.sqlite          Hot runtime state: client binding, update cursors,
+                        synchronization jobs, receipts, tombstones, cooldown
   archive/
-    index.sqlite        Archive metadata, peers, media index, downloaded-file ledger
+    index.sqlite        Cold properties: peer names/usernames/access hashes,
+                        media index, downloaded-file ledger
     user-123.jsonl      Private conversation
     chat-456.jsonl      Basic group
     channel-789.jsonl   Supergroup or channel
@@ -39,9 +41,11 @@ see [upgrading](usage.md#upgrading-from-json-state).
 Do not share state as a diagnostic attachment. Internal metadata includes access
 information not intended for downstream consumers. Restrictive file permissions
 are not encryption; use the operating system's access controls and disk protection.
-`index.sqlite` is a private internal database containing conversation access
-hashes as well as names and file paths. It is not a public peer-name export;
-do not publish the database indiscriminately.
+`state.sqlite` is the hot runtime database. `index.sqlite` is the cold properties
+database containing names, usernames, conversation access hashes, media and file
+paths. They are intentionally separate: frequent cursor/job writes do not rewrite
+stable peer properties. Neither is a public peer-name export; do not publish either
+database indiscriminately.
 Protect both databases and their `-wal`/`-shm` sidecar files. SQLite's backup API
 can produce a consistent database snapshot. To back up JSONL and databases as a
 complete archive, stop the archiver and downloader before copying their state.
@@ -57,7 +61,7 @@ or JSONL, but this does not guarantee an entirely unchanged directory.
 
 | Table | Purpose |
 | --- | --- |
-| `state` | Serialized internal state; the `archive_metadata` key stores account binding, peer access information, history progress, deletion markers, and blocked conversations. |
+| `state` | Hot serialized state; `archive_metadata` stores account binding and peer IDs/history progress, while `sync_cycle`, `sync_job:*`, and `jsonl_intent:*` store resumable work and crash receipts. Names and access hashes are joined from `index.sqlite`. |
 | `peers` | `peer`, `kind`, numeric `id`, display `name`, `username`, and `is_dialog`. |
 | `media` | `peer`, `message_id`, `media_id`, `media_kind`, `file_name`, `mime_type`, and `size_bytes` for current attachment records. |
 | `files` | Completed downloads: `peer`, `message_id`, `media_id`, `media_kind`, local `path`, `size_bytes`, `sha256`, and `downloaded_at`. |
@@ -73,7 +77,9 @@ stored alongside stable IDs; a name or username is not a unique account identity
 The index does not duplicate message bodies and does not provide SQLite FTS.
 Search continues to evaluate local JSONL messages with regular expressions.
 The component's separate `state.sqlite` stores its client binding, update state,
-and cooldown in keyed `state` rows; login authorization stays in `session.json`.
+cooldown, synchronization jobs and crash receipts in keyed `state` rows; login
+authorization stays in `session.json`. SQLite schema version 2 is explicit; old
+JSON state or schema version 1 is not auto-migrated.
 
 If `sqlite3` is installed, list conversation names without changing records:
 

@@ -49,8 +49,12 @@ jobs:
           trap 'rm -rf "$temp_dir"' EXIT
           go run ./scripts/licenses --output "$temp_dir"
           diff -ru licenses "$temp_dir"
-      - name: Test with the race detector
+      - name: Test with the race detector (Unix)
+        if: runner.os != 'Windows'
         run: go test -race -count=1 ./...
+      - name: Test without race detector (Windows)
+        if: runner.os == 'Windows'
+        run: go test -count=1 ./...
       - name: Vet
         run: go vet ./...
       - name: Build the standalone executable

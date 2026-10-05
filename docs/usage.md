@@ -106,7 +106,6 @@ review its inclusion in source and Git history before any public upload.
 | `--batch` | `50` | Messages or dialogs per request; range `1` to `100`. |
 | `--sync-every` | `6h` | Periodic history and deletion checks; minimum `10m`. |
 | `--reconcile-window` | `1h` | Edit/deletion checks look back one hour; duration or `all`. |
-| `--once` | `false` | Complete one synchronization pass, then exit. |
 | `--history-days` | `30` | Backfill window; `0` disables it, `-1` requests all history. |
 | `--history-since` | Empty | Start date in UTC or an RFC3339 timestamp. |
 
@@ -129,6 +128,10 @@ Pagination stops after reaching earlier messages; the boundary request can still
 return an older page, which is not archived. There is no total message-count cap
 inside the window. Expanding the window resets earlier history scan progress;
 shrinking it does not delete existing records.
+
+`archive` is a resident service. The history window limits history pagination
+only; it does not disable live updates, update-gap recovery, or periodic
+edit/deletion checks. There is no one-shot archive mode.
 
 This setting limits history pagination, not retention. Live updates and update
 gap recovery continue, and can include older messages. Existing records are

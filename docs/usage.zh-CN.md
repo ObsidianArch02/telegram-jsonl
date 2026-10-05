@@ -91,7 +91,6 @@ telegram-jsonl archive --client native --data ./data-native --login
 | `--batch` | `50` | 每次请求的消息或会话数，范围 `1` 至 `100`。 |
 | `--sync-every` | `6h` | 定期历史和删除核对，最低 `10m`。 |
 | `--reconcile-window` | `1h` | 编辑/删除核对窗口，默认回看一小时；可用时长或 `all`。 |
-| `--once` | `false` | 完成一次同步后退出。 |
 | `--history-days` | `30` | 历史窗口；`0` 关闭，`-1` 请求全量。 |
 | `--history-since` | 空 | UTC 起始日期或 RFC3339 时间。 |
 
@@ -110,6 +109,9 @@ telegram-jsonl archive --data ./data-tdl --history-since 2026-09-01
 需要明确时区时用 RFC3339。不能同时显式指定 `--history-days` 和 `--history-since`。
 分页到达更早消息后停止，边界请求可能返回早期记录，但不会将它们保存。
 窗口内不设总条数上限。扩大窗口会重置此前的历史扫描进度，缩小窗口不会清除已有记录。
+
+`archive` 是常驻服务。历史窗口只限制历史分页，不会关闭实时更新、差分恢复或定期编辑/删除核对。
+程序没有一次性归档模式。
 
 该设置限制历史分页，不是保留期限。实时更新和差分恢复仍会运行，也可能带回更早的消息。
 已有记录继续核对编辑和删除。`FLOOD_WAIT` 等待截止时间会持久化，重启不会绕过等待。

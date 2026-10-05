@@ -83,7 +83,6 @@ func runArchive(args []string) error {
 	fs := flag.NewFlagSet("telegram-jsonl archive", flag.ContinueOnError)
 	data := fs.String("data", "./data-tdl", "single-account session and archive directory")
 	login := fs.Bool("login", false, "allow interactive login when the saved session is unauthorized")
-	once := fs.Bool("once", false, "synchronize history and deletions, then exit")
 	interval := fs.Duration("interval", 2*time.Second, "minimum interval between RPC calls (at least 1s)")
 	batch := fs.Int("batch", 50, "messages/dialogs per request (1-100)")
 	every := fs.Duration("sync-every", 6*time.Hour, "periodic history and deletion reconciliation (at least 10m)")
@@ -155,7 +154,7 @@ func runArchive(args []string) error {
 	defer stop()
 	ctx, cancel := context.WithCancelCause(signalCtx)
 	defer cancel(nil)
-	log.Printf("Archive starting: client=%s data=%q interval=%s batch=%d sync_every=%s once=%t timezone=%s", cfg.Mode, *data, *interval, *batch, *every, *once, time.Now().Format("MST -07:00"))
+	log.Printf("Archive starting: client=%s data=%q interval=%s batch=%d sync_every=%s timezone=%s", cfg.Mode, *data, *interval, *batch, *every, time.Now().Format("MST -07:00"))
 	fail := &failure{cancel: cancel}
 	store, err := openArchive(filepath.Join(*data, "archive"), fail)
 	if err != nil {
@@ -244,7 +243,6 @@ func runArchive(args []string) error {
 		defer finish()
 		group, gctx := errgroup.WithContext(runCtx)
 		ready := make(chan struct{})
-		var completed atomic.Bool
 		group.Go(func() error {
 			return manager.Run(gctx, r.api, r.self, updates.AuthOptions{OnStart: func(context.Context) { enabled.Store(true); close(ready) }})
 		})
@@ -268,18 +266,10 @@ func runArchive(args []string) error {
 			case <-ready:
 			}
 			log.Print("Live update receiver started; no read receipts sent")
-			if err := r.syncLoop(gctx, *every, *once); err != nil {
-				return err
-			}
-			completed.Store(true)
-			finish()
-			return nil
+			return r.syncLoop(gctx, *every)
 		})
 		err = group.Wait()
 		enabled.Store(false)
-		if *once && completed.Load() && errors.Is(err, context.Canceled) {
-			return nil
-		}
 		return err
 	})
 	if err := fail.check(); err != nil {

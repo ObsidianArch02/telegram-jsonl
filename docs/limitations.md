@@ -98,15 +98,14 @@ Stop both `archive` and `fetch` before making a complete backup of JSONL and the
 SQLite databases. Preserve WAL and SHM sidecars, and use SQLite's backup API for
 database snapshots.
 
-### One-Shot Synchronization
+### Resident Synchronization
 
-`archive --once` currently runs one complete history and deletion reconciliation
-cycle and then exits. The live update manager remains active during that cycle,
-so updates arriving while the cycle runs may also be applied. The command is
-therefore a bounded synchronization run, not a quiescent offline snapshot. It
-returns success only after the cycle completes; a synchronization error or an
-early interruption remains an error. A strict snapshot mode would require a
-separate design that pauses or drains live updates at a defined boundary.
+`archive` is always a resident service. It runs one history and deletion
+reconciliation cycle, keeps receiving live updates, and starts the next cycle
+after `--sync-every` or an update-gap repair request. `--history-days` and
+`--history-since` limit history pagination; they do not disable live updates or
+turn the command into a one-shot snapshot. Stopping the service requires an
+explicit signal or an unrecoverable synchronization error.
 
 The program does not send chat messages, join groups, or mark messages as read.
 Normal MTProto operation still changes connection and authorization state; a user

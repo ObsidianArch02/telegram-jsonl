@@ -663,13 +663,10 @@ func (r *receiver) sync(ctx context.Context) error {
 	return nil
 }
 
-func (r *receiver) syncLoop(ctx context.Context, every time.Duration, once bool) error {
+func (r *receiver) syncLoop(ctx context.Context, every time.Duration) error {
 	for {
 		if err := r.sync(ctx); err != nil {
 			return err
-		}
-		if once {
-			return nil
 		}
 		log.Printf("Waiting for updates; next reconciliation at %s", time.Now().Add(every).In(time.Local).Format(time.RFC3339))
 		timer := time.NewTimer(every)

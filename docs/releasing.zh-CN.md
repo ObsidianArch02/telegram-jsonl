@@ -43,10 +43,9 @@ git push origin v0.1.0
 ## 产物
 
 发布矩阵覆盖 Linux、macOS、Windows 的 `amd64` 与 `arm64`。
-Unix 包为 `.tar.gz`，Windows 包为 `.zip`，`SHA256SUMS` 记录包校验和。
+Unix 包为 `.tar.gz`，Windows 包为 `.zip`，`SHA256SUMS` 记录六个二进制包的校验和。
 包中包含可执行文件、项目文档、许可证与上游/依赖声明。
-源码包从标签对应 Git 树生成，不打包工作目录，因此排除被忽略的本地账户状态。
-已被 Git 跟踪的应用凭证仍会进入源码包，`.gitignore` 不会从已跟踪文件或历史中删除凭证。
+GitHub 会自动为标签提供源码归档，工作流不会再将重复源码包作为 Release 附件上传。
 
 校验和能检测意外改动，但不是独立的发布者签名。
 交叉编译验证构建，不证明真实账户行为，也不代表在每个目标平台都执行过二进制。
@@ -76,10 +75,10 @@ bash scripts/release.sh build
 
 ## Homebrew Formula
 
-稳定标签发布会额外附上生成的 `telegram-jsonl.rb` formula，
-指向本仓库 tap，使用四个 macOS/Linux `.tar.gz` 产物；Windows 继续使用自己的发布包。
-预发布标签不生成稳定版 formula。生成时用真实包文件核对 SHA-256，
-不得为尚未发布的构建编造版本或校验和。
+Homebrew formula 应位于本仓库的 `Formula/` 目录，不作为 Release 附件上传。
+稳定版使用四个 macOS/Linux 二进制产物；Windows 继续使用自己的发布包。
+预发布标签不生成稳定版 formula。发布产物存在后，在本地生成候选 formula，
+审查后将采用的版本提交到 tap。
 
 本地生成时，将四个真实发布包与 `SHA256SUMS` 放入 `./dist`，
 填写已有的实际发布标签。下方 `v0.1.0` 仅为例子：
@@ -94,11 +93,11 @@ go run ./scripts/homebrew \
 ```
 
 formula 的二进制 URL 指向该标签已有的发布产物，同时保留 `HEAD` 源码构建分支。
-采用发布生成的附件时，从获批准的 Release 取得文件，审查后在 `dev/<topic>` 分支替换
-`Formula/telegram-jsonl.rb`。检查仓库 URL、目标平台、包名和校验和，然后提交完整更新。
+审查生成结果后，在 `dev/<topic>` 分支替换 `Formula/telegram-jsonl.rb`。
+检查仓库 URL、目标平台、包名和校验和，然后提交完整更新。
 在同一个原子采用提交中，移除两份 README 安装命令的 `--HEAD`，改用普通 `brew install`。
 将未发布修改 rebase 到最新 `main`，按上文要求为准确的上传内容取得批准。
-CI 只生成附件，不自动向 tap 提交、更新 `main`、推送分支或创建 Pull Request。
+CI 不自动向 tap 提交、更新 `main`、推送分支或创建 Pull Request。
 
 采用稳定版 formula 之前，初始 formula 需要 `--HEAD`。
 [Homebrew 安装](homebrew.zh-CN.md)包含同仓库 tap 的明确 URL，以及开发版与稳定版命令。

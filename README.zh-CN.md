@@ -10,15 +10,15 @@
 
 ## 安装
 
-审查通过的源码和 formula 发布后，可在 macOS 或 Linux 上安装：
+从仓库当前 `main` 安装开发版时，在 macOS 或 Linux 运行：
 
 ```sh
 brew tap obsidianarch02/telegram-jsonl https://github.com/ObsidianArch02/telegram-jsonl.git
 brew install --HEAD obsidianarch02/telegram-jsonl/telegram-jsonl
 ```
 
-初始 formula 从已发布的 `main` 构建一个独立可执行文件，采用稳定版 formula 前需要 `--HEAD`，
-无需额外 tdl 或 TDLib。
+初始 formula 从 `main` 构建一个独立可执行文件；在 `Formula/telegram-jsonl.rb`
+采用稳定版 formula 前需要 `--HEAD`，无需额外 tdl 或 TDLib。
 详见 [Homebrew、源码与 Windows 安装](docs/homebrew.zh-CN.md)。
 
 ## 快速开始

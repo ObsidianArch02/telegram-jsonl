@@ -63,9 +63,9 @@ Stable installations use the precompiled executable and do not require Go.
 To switch an existing HEAD installation to stable, uninstall the formula with
 `brew uninstall obsidianarch02/telegram-jsonl/telegram-jsonl`, then run the stable
 install command above. Keep your account data outside the package directory.
-Release automation attaches the generated formula to the release; it does not
-automatically replace the tap's formula or push to `main`. Generation and review
-instructions are in [releasing](releasing.md#homebrew-formula).
+Release automation does not attach the formula to the release or automatically
+replace the tap's formula. Generation and review instructions are in
+[releasing](releasing.md#homebrew-formula).
 
 ## Source or Windows
 

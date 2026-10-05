@@ -56,7 +56,7 @@ brew upgrade obsidianarch02/telegram-jsonl/telegram-jsonl
 已有 HEAD 安装切换为稳定版时，先运行
 `brew uninstall obsidianarch02/telegram-jsonl/telegram-jsonl`，再执行上方稳定版安装命令。
 账户数据应保留在软件包目录之外。
-发布自动化将生成的 formula 作为 Release 附件提供，不自动替换 tap formula 或推送 `main`。
+发布自动化不会将 formula 作为 Release 附件提供，也不会自动替换 tap formula 或推送 `main`。
 生成与审查流程见[发布文档](releasing.zh-CN.md#homebrew-formula)。
 
 ## 源码或 Windows

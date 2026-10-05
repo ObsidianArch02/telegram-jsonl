@@ -52,11 +52,10 @@ containing uncommitted release changes; tags identify committed source.
 
 The release matrix covers Linux, macOS, and Windows on `amd64` and `arm64`.
 Unix packages are `.tar.gz`; Windows packages are `.zip`. `SHA256SUMS` records
-the package checksums. Packages include the executable, project documentation,
-license, and upstream/dependency notices. A source archive is generated from the
-tagged Git tree rather than the workspace, excluding ignored local account state.
-Tracked application credentials are included in that source; `.gitignore` does
-not redact tracked files or Git history.
+the six binary package checksums. Packages include the executable, project
+documentation, license, and upstream/dependency notices. GitHub automatically
+provides source archives for the tag; the workflow does not duplicate them as
+Release assets.
 
 Checksums detect accidental changes but are not independent publisher signatures.
 Cross-compilation verifies builds; it does not establish real-account behavior
@@ -89,11 +88,11 @@ Telegram credentials out of Actions secrets: builds and tests do not need them.
 
 ## Homebrew Formula
 
-Stable-tag releases additionally attach a generated `telegram-jsonl.rb` formula.
-It targets this repository's tap and uses the four macOS/Linux `.tar.gz` assets;
-Windows remains available through its release packages. Prerelease tags do not
-produce a stable formula. Generation checks the actual archives against their
-SHA-256 values; it must not invent a version or checksum for an unreleased build.
+The Homebrew formula belongs in this repository's `Formula/` directory, not in
+the Release asset list. Stable releases use the four macOS/Linux `.tar.gz`
+assets; Windows remains available through its release packages. Prerelease tags
+do not produce a stable formula. Generate a candidate locally, review it, and
+commit the adopted formula to the tap after the release assets exist.
 
 For local generation, obtain the four actual release archives and `SHA256SUMS`
 in `./dist`. Use the existing release tag; `v0.1.0` below is only an example:
@@ -108,15 +107,14 @@ go run ./scripts/homebrew \
 ```
 
 The formula's binary URLs refer to that tag's existing release assets and retain
-a `HEAD` source-build fallback. To adopt the release-generated attachment,
-retrieve it from the approved release and inspect it before replacing
+a `HEAD` source-build fallback. Inspect the generated formula before replacing
 `Formula/telegram-jsonl.rb` on `dev/<topic>`. Review repository URLs, supported
 targets, archive names, and checksums, then commit the complete formula update.
 In that same atomic adoption commit, update both README installation commands
 to ordinary `brew install` by removing `--HEAD`.
 Rebase unpublished changes onto the latest `main` and obtain approval for the
-exact upload as described above. CI generates the attachment but does not commit
-to the tap, update `main`, push a branch, or open a pull request automatically.
+exact upload as described above. CI does not commit to the tap, update `main`,
+push a branch, or open a pull request automatically.
 
 Before a stable formula is adopted, the bootstrap formula requires `--HEAD`.
 See [Homebrew installation](homebrew.md) for the explicit same-repository tap URL

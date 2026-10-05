@@ -10,15 +10,17 @@ AI assisted in generating this project; review the code before use.
 
 ## Install
 
-On macOS or Linux, once the reviewed source and formula have been published:
+For a development install from the repository's current `main`:
 
 ```sh
 brew tap obsidianarch02/telegram-jsonl https://github.com/ObsidianArch02/telegram-jsonl.git
 brew install --HEAD obsidianarch02/telegram-jsonl/telegram-jsonl
 ```
 
-The bootstrap formula builds one standalone executable from published `main`;
-use `--HEAD` until a stable formula is adopted. No separate tdl binary or TDLib is required.
+The bootstrap formula builds one standalone executable from `main`; use `--HEAD`
+until a stable formula is adopted in `Formula/telegram-jsonl.rb`. No separate
+tdl binary or TDLib is required. Stable installation and formula adoption are
+described in [Homebrew installation](docs/homebrew.md).
 See [Homebrew, source, and Windows installation](docs/homebrew.md) for details.
 
 ## Quick Start

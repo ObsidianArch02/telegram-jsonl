@@ -138,8 +138,10 @@ func (s *sqliteStore) initialize() error {
 			return err
 		}
 	}
-	if _, err := s.db.Exec("PRAGMA synchronous=FULL"); err != nil {
-		return err
+	if runtime.GOOS != "windows" {
+		if _, err := s.db.Exec("PRAGMA synchronous=FULL"); err != nil {
+			return err
+		}
 	}
 	if version == sqliteSchemaVersion {
 		return nil

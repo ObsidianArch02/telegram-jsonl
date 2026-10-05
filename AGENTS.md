@@ -144,8 +144,14 @@ use the rules below and report that their hook could not be run.
 - Keep AGPL licensing, upstream attribution, Telegram disclaimers, and
   `.gitignore` current. Dependency changes must include regenerated license notices.
 - Release automation must build the supported Linux/macOS/Windows targets for
-  amd64 and arm64, with source, license notices, and checksums. Keep actions
-  pinned and permissions limited; publishing still requires upload approval.
+  amd64 and arm64, with license notices and checksums. GitHub's tag page already
+  provides source archives; do not add a duplicate source tar or Homebrew formula
+  to Release assets. After a stable tag successfully publishes, generate the
+  formula from the real release archives and checksums, review it, commit it to
+  `Formula/telegram-jsonl.rb` on `dev/<topic>`, rebase onto `main`, and publish
+  that formula update separately. Users receive the new stable binary with
+  `brew update && brew upgrade`. Keep actions pinned and permissions limited;
+  publishing still requires upload approval.
 
 ## Task Completion
 

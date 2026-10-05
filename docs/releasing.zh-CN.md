@@ -99,6 +99,13 @@ formula 的二进制 URL 指向该标签已有的发布产物，同时保留 `HE
 将未发布修改 rebase 到最新 `main`，按上文要求为准确的上传内容取得批准。
 CI 不自动向 tap 提交、更新 `main`、推送分支或创建 Pull Request。
 
+稳定标签成功发布并采用新 formula 后，用户通过以下命令更新稳定版：
+
+```sh
+brew update
+brew upgrade obsidianarch02/telegram-jsonl/telegram-jsonl
+```
+
 采用稳定版 formula 之前，初始 formula 需要 `--HEAD`。
 [Homebrew 安装](homebrew.zh-CN.md)包含同仓库 tap 的明确 URL，以及开发版与稳定版命令。
 安装要求已发布的 `main` 包含审查通过的源码和 formula，发布这些内容仍需获批准。

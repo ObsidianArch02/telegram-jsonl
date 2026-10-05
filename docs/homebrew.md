@@ -8,10 +8,8 @@
 
 The project and its Homebrew tap share
 [ObsidianArch02/telegram-jsonl](https://github.com/ObsidianArch02/telegram-jsonl).
-The commands below require reviewed source and `Formula/telegram-jsonl.rb` on
-the repository's published `main` branch. Creating a repository alone does not
-make the tool installable. The bootstrap instructions use HEAD source builds;
-stable installation additionally requires an adopted formula and its release assets.
+The stable formula and reviewed source are published in `main`. Creating a
+repository alone does not make the tool installable.
 
 ## Development Installation
 
@@ -63,6 +61,8 @@ Stable installations use the precompiled executable and do not require Go.
 To switch an existing HEAD installation to stable, uninstall the formula with
 `brew uninstall obsidianarch02/telegram-jsonl/telegram-jsonl`, then run the stable
 install command above. Keep your account data outside the package directory.
+After a new stable formula is committed to `main`, run `brew update` and
+`brew upgrade obsidianarch02/telegram-jsonl/telegram-jsonl` to receive it.
 Release automation does not attach the formula to the release or automatically
 replace the tap's formula. Generation and review instructions are in
 [releasing](releasing.md#homebrew-formula).

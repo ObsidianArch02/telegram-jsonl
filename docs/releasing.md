@@ -116,6 +116,13 @@ Rebase unpublished changes onto the latest `main` and obtain approval for the
 exact upload as described above. CI does not commit to the tap, update `main`,
 push a branch, or open a pull request automatically.
 
+After a stable tag succeeds, users update the adopted formula with:
+
+```sh
+brew update
+brew upgrade obsidianarch02/telegram-jsonl/telegram-jsonl
+```
+
 Before a stable formula is adopted, the bootstrap formula requires `--HEAD`.
 See [Homebrew installation](homebrew.md) for the explicit same-repository tap URL
 and development/stable commands. Installation requires the reviewed source and

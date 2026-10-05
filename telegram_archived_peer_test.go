@@ -20,7 +20,8 @@ func TestVerifyArchivedChannelPersistsForbiddenAndSkipsItAfterRestart(t *testing
 	calls := 0
 	r := &receiver{archive: a, self: 42, batch: 2, api: tg.NewClient(telegram.InvokeFunc(func(_ context.Context, in bin.Encoder, _ bin.Decoder) error {
 		calls++
-		if _, ok := in.(*tg.ChannelsGetParticipantsRequest); !ok {
+		req, ok := in.(*tg.MessagesGetHistoryRequest)
+		if !ok || req.Peer.(*tg.InputPeerChannel).ChannelID != 7 || req.Limit != 1 {
 			t.Fatalf("unexpected archived peer check RPC %T", in)
 		}
 		return tgerr.New(406, "CHANNEL_PRIVATE")
@@ -50,11 +51,11 @@ func TestVerifyArchivedPublicChannelRemainsActiveWhenAccessible(t *testing.T) {
 	calls := 0
 	r := &receiver{archive: a, self: 42, api: tg.NewClient(telegram.InvokeFunc(func(_ context.Context, in bin.Encoder, out bin.Decoder) error {
 		calls++
-		req, ok := in.(*tg.ChannelsGetParticipantsRequest)
-		if !ok || req.Channel.(*tg.InputChannel).ChannelID != 8 || req.Limit != 1 {
+		req, ok := in.(*tg.MessagesGetHistoryRequest)
+		if !ok || req.Peer.(*tg.InputPeerChannel).ChannelID != 8 || req.Limit != 1 {
 			t.Fatal("archived public channel check was malformed")
 		}
-		out.(*tg.ChannelsChannelParticipantsBox).ChannelParticipants = &tg.ChannelsChannelParticipants{Participants: []tg.ChannelParticipantClass{}}
+		out.(*tg.MessagesMessagesBox).Messages = &tg.MessagesMessages{Messages: []tg.MessageClass{}}
 		return nil
 	}))}
 	requireOK(t, r.verifyArchivedPeers(context.Background()))
@@ -70,7 +71,8 @@ func TestVerifyArchivedChannelKeepsActiveWhenAdminCheckIsRequired(t *testing.T) 
 	requireOK(t, a.bind(42))
 	requireOK(t, a.register("channel-10", PeerInfo{Kind: "channel", ID: 10, AccessHash: 100}))
 	r := &receiver{archive: a, self: 42, api: tg.NewClient(telegram.InvokeFunc(func(_ context.Context, in bin.Encoder, _ bin.Decoder) error {
-		if _, ok := in.(*tg.ChannelsGetParticipantsRequest); !ok {
+		req, ok := in.(*tg.MessagesGetHistoryRequest)
+		if !ok || req.Peer.(*tg.InputPeerChannel).ChannelID != 10 || req.Limit != 1 {
 			t.Fatalf("unexpected archived peer check RPC %T", in)
 		}
 		return tgerr.New(400, "CHAT_ADMIN_REQUIRED")

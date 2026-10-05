@@ -107,6 +107,11 @@ after `--sync-every` or an update-gap repair request. `--history-days` and
 turn the command into a one-shot snapshot. Stopping the service requires an
 explicit signal or an unrecoverable synchronization error.
 
+Archived channels that are no longer in the current dialog folders are checked
+with a one-message `messages.getHistory` request using the stored peer access
+hash. The check is lazy and does not enumerate channel participants or usernames.
+An admin-only response is treated as inconclusive; it does not block the channel.
+
 The program does not send chat messages, join groups, or mark messages as read.
 Normal MTProto operation still changes connection and authorization state; a user
 authorization is not a server-enforced read-only permission.

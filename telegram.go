@@ -538,7 +538,7 @@ func inaccessible(err error) bool {
 }
 
 func verificationUnavailable(err error) bool {
-	// channels.getParticipants is an admin-level method for some channels.
+	// Some Telegram methods require admin privileges even when access remains.
 	// CHAT_ADMIN_REQUIRED says nothing about the current user's membership.
 	return tgerr.Is(err, "CHAT_ADMIN_REQUIRED", "CHANNEL_ADMIN_REQUIRED")
 }
@@ -554,10 +554,10 @@ func (r *receiver) verifyArchivedPeers(ctx context.Context) error {
 		var err error
 		switch peer.Kind {
 		case "channel":
-			_, err = r.api.ChannelsGetParticipants(ctx, &tg.ChannelsGetParticipantsRequest{
-				Channel: &tg.InputChannel{ChannelID: peer.ID, AccessHash: peer.AccessHash},
-				Filter:  &tg.ChannelParticipantsRecent{}, Limit: 1,
-			})
+			// Probe conversation history lazily. Do not enumerate channel
+			// participants: that endpoint requires admin privileges for some
+			// channels and is unrelated to message access.
+			_, err = r.api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{Peer: inputPeer(peer), Limit: 1})
 		case "chat", "user":
 			_, err = r.api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{Peer: inputPeer(peer), Limit: 1})
 		default:

@@ -84,7 +84,8 @@ use the rules below and report that their hook could not be run.
 - One-off schema migrations belong in a private temporary directory when requested;
   do not add a generic migration command to the unreleased product. Migration tools
   must write fresh destinations, leave sources untouched, acquire source locks, and
-  use WAL-aware SQLite backups.
+  use journal-aware SQLite backups, including WAL/SHM on Unix and rollback
+  journal files on Windows.
 - The maintainer explicitly authorized the existing application-credential
   commit. Preserve that decision without exposing values in tool output. Do not
   introduce additional private credentials into Git without an explicit request.

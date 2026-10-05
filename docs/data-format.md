@@ -46,10 +46,11 @@ database containing names, usernames, conversation access hashes, media and file
 paths. They are intentionally separate: frequent cursor/job writes do not rewrite
 stable peer properties. Neither is a public peer-name export; do not publish either
 database indiscriminately.
-Protect both databases and their `-wal`/`-shm` sidecar files. SQLite's backup API
+Protect both databases and their journal sidecar files (`-wal`/`-shm` on Unix,
+`-journal` on Windows). SQLite's backup API
 can produce a consistent database snapshot. To back up JSONL and databases as a
 complete archive, stop the archiver and downloader before copying their state.
-Copying only a live `.sqlite` file can lose committed data still in its WAL.
+Copying only a live `.sqlite` file can lose committed data still in its journal.
 Windows users must check the folder's NTFS permissions.
 SQLite readers can create WAL/SHM coordination sidecars even when opened read-only.
 Search performs no logical database writes and does not modify the main database

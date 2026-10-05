@@ -51,8 +51,8 @@ Telegram 更新协议游标与归档周期分开持久化。差分响应会先�
 ### 并行命令与快照语义
 
 `archive` 持有归档数据目录锁，同一目录同时只能有一个归档进程使用。
-JSONL 通过临时文件、`fsync` 和原子替换写入。运行时库和归档 SQLite 数据库使用 WAL、
-十秒 busy timeout，并为每个 store 限制为一个连接；并发 SQLite 事务会等待或超时失败，
+JSONL 通过临时文件、`fsync` 和原子替换写入。Unix 上运行时库和归档 SQLite 数据库使用 WAL，
+Windows 使用 SQLite rollback journal；两者都有十秒 busy timeout，并为每个 store 限制为一个连接；并发 SQLite 事务会等待或超时失败，
 不会互相覆盖。
 
 `search` 是离线只读读取器，不获取归档目录锁。它分别读取 JSONL 和 SQLite 元数据，
@@ -66,8 +66,8 @@ JSONL 通过临时文件、`fsync` 和原子替换写入。运行时库和归档
 远端消息删除后，本地已完成文件及其记录仍会保留；它们是主动保存的副本，不是 Telegram
 消息生命周期的镜像。
 
-复制 JSONL 和 SQLite 作为完整备份前，请停止 `archive` 和 `fetch`。保留 WAL、SHM 附属文件，
-数据库快照应使用 SQLite backup API。
+复制 JSONL 和 SQLite 作为完整备份前，请停止 `archive` 和 `fetch`。保留 journal 附属文件（Unix 的
+`-wal`/`-shm` 或 Windows 的 `-journal`），数据库快照应使用 SQLite backup API。
 
 ### 常驻同步
 
@@ -90,7 +90,7 @@ JSONL 通过临时文件、`fsync` 和原子替换写入。运行时库和归档
 
 非消息、非登录的状态全部保存在 SQLite。旧 JSON 元数据和状态不会导入，
 此存储版本请使用新数据目录并保留旧数据。
-数据库及 WAL/SHM 附属文件均应按私密账户数据保护。
+数据库及 WAL/SHM 或 journal 附属文件均应按私密账户数据保护。
 数据库快照应使用 SQLite 备份 API；复制 JSONL 与数据库作为完整归档备份前，
 请先停止归档器和下载器。
 

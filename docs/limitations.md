@@ -75,9 +75,9 @@ automatically rotate accounts, authorizations, or application identities.
 `archive` owns the archive data directory lock and only one archive process may
 use that directory at a time. Its JSONL files are replaced through a temporary
 file, `fsync`, and atomic rename. The runtime and archive SQLite databases use
-WAL, a ten-second busy timeout, and one connection per store; concurrent SQLite
-transactions therefore wait or fail with a timeout instead of overwriting one
-another.
+WAL on Unix and SQLite's rollback journal on Windows, with a ten-second busy
+timeout and one connection per store; concurrent SQLite transactions therefore
+wait or fail with a timeout instead of overwriting one another.
 
 `search` is an offline, read-only reader. It does not take the archive directory
 lock. It reads JSONL and SQLite metadata separately, then rechecks metadata, so
@@ -95,8 +95,8 @@ Completed local files and their ledger rows remain after a remote message is
 deleted; they are explicit copies, not lifecycle mirrors.
 
 Stop both `archive` and `fetch` before making a complete backup of JSONL and the
-SQLite databases. Preserve WAL and SHM sidecars, and use SQLite's backup API for
-database snapshots.
+SQLite databases. Preserve journal sidecars (`-wal`/`-shm` on Unix or `-journal`
+on Windows), and use SQLite's backup API for database snapshots.
 
 ### Resident Synchronization
 
@@ -125,7 +125,8 @@ authorization is not a server-enforced read-only permission.
 
 All non-message, non-login state resides in SQLite. Old JSON metadata/state is
 not imported; use fresh data directories for this storage version. Preserve
-prior data and protect databases and WAL/SHM sidecars as private account data.
+prior data and protect databases and their WAL/SHM or journal sidecars as private
+account data.
 Use SQLite's backup API for database snapshots; stop archive and fetch before
 copying JSONL and databases as one complete archive backup.
 

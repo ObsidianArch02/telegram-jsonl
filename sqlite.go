@@ -101,15 +101,6 @@ func checkSQLiteVersion(db *sql.DB) (int, error) {
 	return version, nil
 }
 
-func sqliteJournalMode() string {
-	if runtime.GOOS == "windows" {
-		// modernc.org/sqlite can report SQLITE_NOMEM while opening WAL on
-		// Windows. The rollback journal keeps the same transactional safety.
-		return "DELETE"
-	}
-	return "WAL"
-}
-
 func openSQLite(path string) (*sqliteStore, error) {
 	return openSQLiteRole(path, false)
 }
@@ -142,8 +133,10 @@ func (s *sqliteStore) initialize() error {
 	if err := s.checkRole(version); err != nil {
 		return err
 	}
-	if _, err := s.db.Exec("PRAGMA journal_mode=" + sqliteJournalMode()); err != nil {
-		return err
+	if runtime.GOOS != "windows" {
+		if _, err := s.db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			return err
+		}
 	}
 	if _, err := s.db.Exec("PRAGMA synchronous=FULL"); err != nil {
 		return err

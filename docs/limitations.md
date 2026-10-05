@@ -70,6 +70,44 @@ need distinct sessions for the same account. The program stops on account mismat
 session failure, or managed archive/session/cursor write failure. It does not
 automatically rotate accounts, authorizations, or application identities.
 
+### Concurrent Commands and Snapshots
+
+`archive` owns the archive data directory lock and only one archive process may
+use that directory at a time. Its JSONL files are replaced through a temporary
+file, `fsync`, and atomic rename. The runtime and archive SQLite databases use
+WAL, a ten-second busy timeout, and one connection per store; concurrent SQLite
+transactions therefore wait or fail with a timeout instead of overwriting one
+another.
+
+`search` is an offline, read-only reader. It does not take the archive directory
+lock. It reads JSONL and SQLite metadata separately, then rechecks metadata, so
+it cannot provide one transactionally consistent snapshot across the JSONL file,
+`state.sqlite`, and `archive/index.sqlite`. It may return a slightly older view
+while `archive` is running, or report an account/metadata consistency error if a
+replacement crosses its read boundary. It never writes archive state.
+
+`fetch` locks its own fetch data directory, not the archive directory. It reads a
+local archive snapshot before contacting Telegram and may run alongside `archive`.
+It writes only completed-download rows to the shared `files` table in
+`archive/index.sqlite`; it does not modify JSONL or archive synchronization
+metadata. SQLite transactions coordinate that ledger write with the archiver.
+Completed local files and their ledger rows remain after a remote message is
+deleted; they are explicit copies, not lifecycle mirrors.
+
+Stop both `archive` and `fetch` before making a complete backup of JSONL and the
+SQLite databases. Preserve WAL and SHM sidecars, and use SQLite's backup API for
+database snapshots.
+
+### One-Shot Synchronization
+
+`archive --once` currently runs one complete history and deletion reconciliation
+cycle and then exits. The live update manager remains active during that cycle,
+so updates arriving while the cycle runs may also be applied. The command is
+therefore a bounded synchronization run, not a quiescent offline snapshot. It
+returns success only after the cycle completes; a synchronization error or an
+early interruption remains an error. A strict snapshot mode would require a
+separate design that pauses or drains live updates at a defined boundary.
+
 The program does not send chat messages, join groups, or mark messages as read.
 Normal MTProto operation still changes connection and authorization state; a user
 authorization is not a server-enforced read-only permission.

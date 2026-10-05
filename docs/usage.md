@@ -61,6 +61,8 @@ Operational logs use the standard library's structured text logger and go to
 stderr with timestamps in the computer's local timezone. A signal produces an
 explicit clean-stop message; an unexpected client return is reported as an
 error instead of as a completed synchronization.
+Interactive terminals color the `INFO`, `WARN`, and `ERROR` level labels. Output
+redirected to a file or pipe stays plain text; set `NO_COLOR=1` to disable color.
 Set `TZ=Asia/Shanghai` in the process environment to select a different timezone.
 History boundaries, next synchronization times, and FLOOD_WAIT deadlines in logs
 use that timezone too. JSONL dates and JSON output on stdout remain in UTC.

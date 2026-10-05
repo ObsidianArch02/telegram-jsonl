@@ -61,6 +61,27 @@ func TestArchiveDoesNotLogSuccessfulWriteAfterFailure(t *testing.T) {
 	}
 }
 
+func TestWarningLogUsesWarningLevel(t *testing.T) {
+	output := captureLogs(t)
+	logWarnf("verification unavailable: peer=%s", "channel-7")
+	got := output.String()
+	if !strings.Contains(got, "level=WARN") || !strings.Contains(got, "verification unavailable") {
+		t.Fatalf("warning log was not emitted at WARN level: %q", got)
+	}
+}
+
+func TestAnsiLevelWriterColorsWarningLevel(t *testing.T) {
+	var output bytes.Buffer
+	input := []byte("time=now level=WARN msg=verification\\n")
+	n, err := (ansiLevelWriter{dst: &output}).Write(input)
+	if err != nil || n != len(input) {
+		t.Fatalf("colored writer write failed: n=%d err=%v", n, err)
+	}
+	if got := output.String(); !strings.Contains(got, "\x1b[33mlevel=WARN\x1b[0m") {
+		t.Fatalf("warning level was not colored: %q", got)
+	}
+}
+
 func TestHistoryLogUsesLocalTimezoneWithoutChangingBoundary(t *testing.T) {
 	previous := time.Local
 	time.Local = time.FixedZone("test-local", 8*60*60)

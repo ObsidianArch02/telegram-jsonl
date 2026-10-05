@@ -573,7 +573,7 @@ func (r *receiver) verifyArchivedPeers(ctx context.Context) error {
 			continue
 		}
 		if verificationUnavailable(err) {
-			logPrintf("Archived peer verification unavailable: peer=%s reason=%v; leaving it active", key, err)
+			logWarnf("Archived peer verification unavailable: peer=%s reason=%v; leaving it active", key, err)
 			continue
 		}
 		return fmt.Errorf("verify archived peer %s: %w", key, err)

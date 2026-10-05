@@ -66,6 +66,13 @@ type archive struct {
 	state      *sqliteStore
 }
 
+type retentionRecord struct {
+	Peer string
+	ID   int
+	Date time.Time
+	Size int64
+}
+
 var validPeer = regexp.MustCompile(`^(user|chat|channel)-[1-9][0-9]*$`)
 
 func openArchive(dir string, fail *failure) (*archive, error) {
@@ -378,6 +385,85 @@ func (a *archive) flush(peer string) error {
 		return err
 	}
 	return a.clearIntent(peer)
+}
+
+func encodedRecordSize(record Record) (int64, error) {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(record); err != nil {
+		return 0, err
+	}
+	return int64(b.Len()), nil
+}
+
+// prune removes expired records first, then the oldest remaining records until
+// the active JSONL payload is within the configured byte limit.
+func (a *archive) prune(cutoff time.Time, maxBytes int64) (removed int, before, after int64, err error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if cutoff.IsZero() && maxBytes <= 0 {
+		return 0, 0, 0, nil
+	}
+	candidates := make([]retentionRecord, 0)
+	changed := make(map[string]bool)
+	total := int64(0)
+	for peer, rows := range a.rows {
+		for id, record := range rows {
+			size, sizeErr := encodedRecordSize(record)
+			if sizeErr != nil {
+				return 0, 0, 0, a.failure.report(sizeErr)
+			}
+			total += size
+			before += size
+			candidates = append(candidates, retentionRecord{Peer: peer, ID: id, Date: record.Date, Size: size})
+		}
+	}
+	for _, candidate := range candidates {
+		if cutoff.IsZero() || !candidate.Date.Before(cutoff) {
+			continue
+		}
+		if rows := a.rows[candidate.Peer]; rows != nil {
+			if _, ok := rows[candidate.ID]; ok {
+				delete(rows, candidate.ID)
+				a.touch(candidate.Peer, candidate.ID)
+				changed[candidate.Peer] = true
+				removed++
+				total -= candidate.Size
+			}
+		}
+	}
+	if maxBytes > 0 && total > maxBytes {
+		sort.Slice(candidates, func(i, j int) bool {
+			if candidates[i].Date.Equal(candidates[j].Date) {
+				if candidates[i].Peer == candidates[j].Peer {
+					return candidates[i].ID < candidates[j].ID
+				}
+				return candidates[i].Peer < candidates[j].Peer
+			}
+			return candidates[i].Date.Before(candidates[j].Date)
+		})
+		for _, candidate := range candidates {
+			if total <= maxBytes {
+				break
+			}
+			if rows := a.rows[candidate.Peer]; rows != nil {
+				if _, ok := rows[candidate.ID]; ok {
+					delete(rows, candidate.ID)
+					a.touch(candidate.Peer, candidate.ID)
+					changed[candidate.Peer] = true
+					removed++
+					total -= candidate.Size
+				}
+			}
+		}
+	}
+	for peer := range changed {
+		if err := a.flush(peer); err != nil {
+			return 0, 0, 0, err
+		}
+	}
+	return removed, before, total, nil
 }
 
 type jsonlIntent struct {

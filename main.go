@@ -99,14 +99,16 @@ func runArchive(args []string) error {
 	login := fs.Bool("login", false, "allow interactive login when the saved session is unauthorized")
 	interval := fs.Duration("interval", 2*time.Second, "minimum interval between RPC calls (at least 1s)")
 	batch := fs.Int("batch", 50, "messages/dialogs per request (1-100)")
-	every := fs.Duration("sync-every", 6*time.Hour, "periodic history and deletion reconciliation (at least 10m)")
+	every := fs.Duration("sync-every", time.Hour, "periodic history, deletion, and retention reconciliation (at least 10m)")
 	clientMode := fs.String("client", "auto", "client backend: auto, native, or tdl")
 	loginMethod := fs.String("login-method", "qr", "TDL login method: qr or code")
 	relogin := fs.Bool("tdl-relogin", false, "with --login, explicitly replace the saved TDL session")
 	checkClient := fs.Bool("check-client", false, "verify source-integrated client configuration without contacting Telegram")
 	proxyAddress := fs.String("proxy", "", "SOCKS5 proxy URL")
-	historyDays := fs.Int("history-days", 30, "history lookback in days; 0 disables backfill, -1 enables all history")
-	historySince := fs.String("history-since", "", "history start: YYYY-MM-DD (UTC) or RFC3339; overrides default 30 days")
+	historyDays := fs.Int("history-days", 2, "rolling history lookback in days; 0 disables backfill, -1 enables all history")
+	historySince := fs.String("history-since", "", "fixed history start: YYYY-MM-DD (UTC) or RFC3339; overrides rolling days")
+	retentionDays := fs.String("retention-days", "auto", "JSONL retention: auto (history-days + 5), -1, or 1-36505 days")
+	maxStorageBytes := fs.Int64("max-storage-bytes", 1<<30, "maximum active JSONL content in bytes; 0 disables the limit")
 	reconcileWindowText := fs.String("reconcile-window", "1h", "edit/deletion reconciliation lookback; duration or all")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -114,8 +116,8 @@ func runArchive(args []string) error {
 	if fs.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
 	}
-	if *interval < time.Second || *batch < 1 || *batch > 100 || *every < 10*time.Minute {
-		return errors.New("require interval >= 1s, batch 1-100, sync-every >= 10m")
+	if *interval < time.Second || *batch < 1 || *batch > 100 || *every < 10*time.Minute || *maxStorageBytes < 0 {
+		return errors.New("require interval >= 1s, batch 1-100, sync-every >= 10m, max-storage-bytes >= 0")
 	}
 	daysExplicit := false
 	fs.Visit(func(f *flag.Flag) {
@@ -124,6 +126,14 @@ func runArchive(args []string) error {
 		}
 	})
 	historyPolicy, err := parseHistoryConfig(*historyDays, *historySince, daysExplicit, time.Now())
+	if err != nil {
+		return err
+	}
+	historySinceOverride := time.Time{}
+	if *historySince != "" {
+		historySinceOverride = historyPolicy.Since
+	}
+	retentionPolicy, err := parseRetentionPolicy(*retentionDays, *historyDays)
 	if err != nil {
 		return err
 	}
@@ -168,7 +178,8 @@ func runArchive(args []string) error {
 	defer stop()
 	ctx, cancel := context.WithCancelCause(signalCtx)
 	defer cancel(nil)
-	logPrintf("Archive starting: client=%s data=%q interval=%s batch=%d sync_every=%s timezone=%s", cfg.Mode, *data, *interval, *batch, *every, time.Now().Format("MST -07:00"))
+	logWarnf("Active JSONL storage limit: max_storage_bytes=%d; SQLite state, sessions, and completed downloads are excluded", *maxStorageBytes)
+	logPrintf("Archive starting: client=%s data=%q interval=%s batch=%d sync_every=%s history_days=%d retention=%s max_storage_bytes=%d timezone=%s", cfg.Mode, *data, *interval, *batch, *every, *historyDays, retentionPolicy, *maxStorageBytes, time.Now().Format("MST -07:00"))
 	fail := &failure{cancel: cancel}
 	store, err := openArchive(filepath.Join(*data, "archive"), fail)
 	if err != nil {
@@ -187,7 +198,7 @@ func runArchive(args []string) error {
 		return err
 	}
 	defer gate.Close()
-	r := &receiver{archive: store, protocol: protocol, batch: *batch, failure: fail, resync: make(chan struct{}, 1), historyPolicy: historyPolicy, reconcileWindow: reconcileWindow}
+	r := &receiver{archive: store, protocol: protocol, batch: *batch, failure: fail, resync: make(chan struct{}, 1), historyPolicy: historyPolicy, historyDays: *historyDays, historySince: historySinceOverride, retention: retentionPolicy, maxStorageBytes: *maxStorageBytes, reconcileWindow: reconcileWindow}
 	manager := updates.New(updates.Config{Handler: r.handler(), Storage: protocol, AccessHasher: protocol, OnChannelTooLong: func(id int64) {
 		logPrintf("Update gap for channel-%d; scheduling history reconciliation", id)
 		select {

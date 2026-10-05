@@ -93,9 +93,11 @@ telegram-jsonl archive --client native --data ./data-native --login
 | `--proxy` | 空 | 两种后端均支持 SOCKS5 代理地址。 |
 | `--interval` | `2s` | 业务 RPC 最小启动间隔，最低 `1s`。 |
 | `--batch` | `50` | 每次请求的消息或会话数，范围 `1` 至 `100`。 |
-| `--sync-every` | `6h` | 定期历史和删除核对，最低 `10m`。 |
+| `--sync-every` | `1h` | 定期历史、删除和留存清理，最低 `10m`。 |
 | `--reconcile-window` | `1h` | 编辑/删除核对窗口，默认回看一小时；可用时长或 `all`。 |
-| `--history-days` | `30` | 历史窗口；`0` 关闭，`-1` 请求全量。 |
+| `--history-days` | `2` | 滚动历史补拉窗口；`0` 关闭补拉，`-1` 请求全量历史。 |
+| `--retention-days` | `auto` | JSONL 留存；`auto` 表示 `history-days + 5`，`-1` 表示无限留存。必须大于有限的 `--history-days`。 |
+| `--max-storage-bytes` | `1073741824` | 活动 JSONL 内容最大字节数；`0` 关闭容量限制。 |
 | `--history-since` | 空 | UTC 起始日期或 RFC3339 时间。 |
 
 `telegram-jsonl archive --help`、`search --help`、`fetch --help`
@@ -109,16 +111,19 @@ telegram-jsonl archive --data ./data-tdl --history-days 0
 telegram-jsonl archive --data ./data-tdl --history-since 2026-09-01
 ```
 
-窗口在进程启动时固定，包含恰好在起点的消息。`YYYY-MM-DD` 按 UTC 零点解释，
-需要明确时区时用 RFC3339。不能同时显式指定 `--history-days` 和 `--history-since`。
+滚动历史窗口在每个同步周期开始时重新计算，包含恰好在当前边界的消息。
+`YYYY-MM-DD` 按 UTC 零点解释；使用 `--history-since` 和 RFC3339 可指定固定边界。
+不能同时显式指定 `--history-days` 和 `--history-since`。
 分页到达更早消息后停止，边界请求可能返回早期记录，但不会将它们保存。
 窗口内不设总条数上限。扩大窗口会重置此前的历史扫描进度，缩小窗口不会清除已有记录。
 
-`archive` 是常驻服务。历史窗口只限制历史分页，不会关闭实时更新、差分恢复或定期编辑/删除核对。
+`archive` 是常驻服务。历史窗口限制历史分页，`--retention-days` 在每个同步周期结束时清理更早的
+JSONL 内容，并且必须大于历史窗口，为未完成的补拉留出时间。两个参数都不会关闭实时更新或差分恢复。
 程序没有一次性归档模式。
 
-该设置限制历史分页，不是保留期限。实时更新和差分恢复仍会运行，也可能带回更早的消息。
+实时更新和差分恢复仍会运行，也可能暂时带回更早的消息；下一轮同步会再次执行留存清理。
 已有记录继续核对编辑和删除。`FLOOD_WAIT` 等待截止时间会持久化，重启不会绕过等待。
+容量上限只计算活动 JSONL 内容，不删除 SQLite 状态、会话或已完成的下载文件。
 
 `--reconcile-window` 限制已有消息的编辑/删除核对范围，默认从每个同步周期开始时间向前回看一小时。
 周期起点和会话位置会保存到运行时 SQLite，因此重启会继续同一个窗口，不会静默改变边界。

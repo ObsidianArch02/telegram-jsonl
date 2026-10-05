@@ -31,6 +31,10 @@ type receiver struct {
 	entitiesMu      sync.Mutex
 	entities        map[string]PeerInfo
 	historyPolicy   historyConfig
+	historyDays     int
+	historySince    time.Time
+	retention       retentionPolicy
+	maxStorageBytes int64
 	reconcileWindow time.Duration
 	cycleStarted    time.Time
 }
@@ -589,6 +593,7 @@ func (r *receiver) sync(ctx context.Context) error {
 		return err
 	}
 	if !resumed {
+		r.historyPolicy = rollingHistoryConfig(r.historyDays, r.historySince, started)
 		if err := r.discover(ctx); err != nil {
 			return err
 		}
@@ -657,6 +662,13 @@ func (r *receiver) sync(ctx context.Context) error {
 	}
 	if err := r.archive.finishCycle(cycle); err != nil {
 		return err
+	}
+	removed, before, after, err := r.archive.prune(r.retention.cutoff(time.Now()), r.maxStorageBytes)
+	if err != nil {
+		return err
+	}
+	if removed > 0 {
+		logPrintf("JSONL retention cleanup: removed=%d bytes_before=%d bytes_after=%d", removed, before, after)
 	}
 	logPrintf("History and deletion reconciliation complete: peers=%d elapsed=%s", len(cycle.Peers), time.Since(started).Round(time.Millisecond))
 	return nil

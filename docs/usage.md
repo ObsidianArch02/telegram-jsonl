@@ -109,9 +109,11 @@ review its inclusion in source and Git history before any public upload.
 | `--proxy` | Empty | SOCKS5 proxy URL for either backend. |
 | `--interval` | `2s` | Minimum start interval for business RPCs; minimum `1s`. |
 | `--batch` | `50` | Messages or dialogs per request; range `1` to `100`. |
-| `--sync-every` | `6h` | Periodic history and deletion checks; minimum `10m`. |
+| `--sync-every` | `1h` | Periodic history, deletion, and retention checks; minimum `10m`. |
 | `--reconcile-window` | `1h` | Edit/deletion checks look back one hour; duration or `all`. |
-| `--history-days` | `30` | Backfill window; `0` disables it, `-1` requests all history. |
+| `--history-days` | `2` | Rolling history backfill window; `0` disables it, `-1` requests all history. |
+| `--retention-days` | `auto` | JSONL retention; `auto` means `history-days + 5`, `-1` is unlimited. Must exceed finite `--history-days`. |
+| `--max-storage-bytes` | `1073741824` | Maximum active JSONL content bytes; `0` disables the capacity limit. |
 | `--history-since` | Empty | Start date in UTC or an RFC3339 timestamp. |
 
 Run `telegram-jsonl archive --help`, `search --help`, or `fetch --help` for
@@ -126,22 +128,26 @@ telegram-jsonl archive --data ./data-tdl --history-days 0
 telegram-jsonl archive --data ./data-tdl --history-since 2026-09-01
 ```
 
-The window is fixed at process startup and includes messages exactly at the
-start time. `YYYY-MM-DD` means midnight UTC; use RFC3339 for an explicit timezone.
+The rolling history window is recalculated at the start of each synchronization
+cycle and includes messages exactly at the current boundary. `YYYY-MM-DD` means
+midnight UTC; use RFC3339 with `--history-since` for an explicit fixed boundary.
 Do not explicitly combine `--history-days` with `--history-since`.
 Pagination stops after reaching earlier messages; the boundary request can still
 return an older page, which is not archived. There is no total message-count cap
 inside the window. Expanding the window resets earlier history scan progress;
 shrinking it does not delete existing records.
 
-`archive` is a resident service. The history window limits history pagination
-only; it does not disable live updates, update-gap recovery, or periodic
-edit/deletion checks. There is no one-shot archive mode.
+`archive` is a resident service. The history window limits history pagination;
+`--retention-days` removes older JSONL content at the end of each synchronization
+cycle and must be larger than the history window so an in-progress backfill has
+time to complete. Neither setting disables live updates or update-gap recovery.
+There is no one-shot archive mode.
 
-This setting limits history pagination, not retention. Live updates and update
-gap recovery continue, and can include older messages. Existing records are
-still checked for edits and deletions. `FLOOD_WAIT` deadlines are persisted;
-restarting does not skip the required wait.
+Live updates and update-gap recovery continue, and can include older messages;
+the next cycle applies the retention boundary again. Existing records are still
+checked for edits and deletions. `FLOOD_WAIT` deadlines are persisted; restarting
+does not skip the required wait. The byte limit applies to active JSONL content
+only; SQLite state, sessions, and completed downloaded files are not deleted by it.
 
 `--reconcile-window` limits the existing-message edit/deletion pass. Its default
 is one hour before the synchronization cycle starts. The cycle stores its start

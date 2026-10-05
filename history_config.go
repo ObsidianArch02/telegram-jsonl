@@ -38,6 +38,20 @@ func parseHistoryConfig(days int, since string, daysExplicit bool, now time.Time
 	}
 }
 
+func rollingHistoryConfig(days int, since time.Time, now time.Time) historyConfig {
+	if !since.IsZero() {
+		return historyConfig{Since: since}
+	}
+	switch days {
+	case -1:
+		return historyConfig{}
+	case 0:
+		return historyConfig{Disabled: true}
+	default:
+		return historyConfig{Since: now.UTC().Add(-time.Duration(days) * 24 * time.Hour).Truncate(time.Second)}
+	}
+}
+
 func (h historyConfig) unix() int64 {
 	if h.Since.IsZero() {
 		return 0

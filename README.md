@@ -60,9 +60,11 @@ On Windows, use `telegram-jsonl.exe` with the command syntax appropriate to your
 Messages stay in JSONL. SQLite separates hot runtime state from cold conversation
 properties, attachment indexes, and download records; see the [data layout](docs/data-format.md).
 
-The default history window is 30 days. `--history-days 0` disables backfill;
-`--history-days -1` explicitly requests all accessible history. Existing records
-are not removed when the window shrinks. Editing and deletion updates still apply.
+The default history window is 2 days and the default JSONL retention window is
+7 days (`--retention-days auto`, five days longer). `--history-days 0` disables
+backfill; `--history-days -1` requests all accessible history. The default active
+JSONL capacity limit is 1 GiB; set `--max-storage-bytes 0` to disable it.
+Editing and deletion updates still apply.
 
 Without credential environment variables, the client integrates modified [tdl](https://github.com/iyear/tdl) login
 code at source level and uses the project's configured application identity. End users do

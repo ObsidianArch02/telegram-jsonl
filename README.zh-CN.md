@@ -59,8 +59,9 @@ Windows 使用 `telegram-jsonl.exe`，并按所用终端调整启动语法。
 聊天消息继续保存在 JSONL，SQLite 将高频运行状态与低频会话属性、附件索引和下载记录分开保存，
 详见[数据布局](docs/data-format.zh-CN.md)。
 
-默认补拉最近 30 天。`--history-days 0` 关闭历史补拉，
-`--history-days -1` 明确请求全量可访问历史。缩小窗口不删除已有记录，
+默认补拉最近 2 天，默认 JSONL 留存 7 天（`--retention-days auto`，比历史窗口多 5 天）。
+`--history-days 0` 关闭历史补拉，`--history-days -1` 请求全量可访问历史。
+默认活动 JSONL 容量上限为 1 GiB，使用 `--max-storage-bytes 0` 可关闭限制。
 编辑和删除更新仍然处理。
 
 未设置凭证环境变量时，客户端在源码层面集成经修改的 [tdl](https://github.com/iyear/tdl) 登录逻辑，

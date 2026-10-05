@@ -107,6 +107,13 @@ after `--sync-every` or an update-gap repair request. `--history-days` and
 turn the command into a one-shot snapshot. Stopping the service requires an
 explicit signal or an unrecoverable synchronization error.
 
+The `--history-days` boundary moves forward at the start of each cycle.
+`--retention-days` is a separate, longer JSONL age-retention boundary; the
+default is `history-days + 5`, which gives an unfinished backfill time to finish.
+`--max-storage-bytes` removes the oldest remaining JSONL records when active JSONL
+content exceeds the limit. It does not delete SQLite state, session files, or
+completed downloads.
+
 Archived channels that are no longer in the current dialog folders are checked
 with a one-message `messages.getHistory` request using the stored peer access
 hash. The check is lazy and does not enumerate channel participants or usernames.

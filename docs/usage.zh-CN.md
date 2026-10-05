@@ -49,9 +49,11 @@ telegram-jsonl fetch --archive ./data-sqlite/archive --data ./fetch-sqlite --log
 
 ## 运行日志
 
-运行日志写入 stderr，时间戳使用电脑本地时区。可在进程环境中设置
+运行日志使用标准库的结构化文本日志器并写入 stderr，时间戳使用电脑本地时区。可在进程环境中设置
 `TZ=Asia/Shanghai` 指定时区。日志中的历史起点、下次同步时间和 FLOOD_WAIT
 截止时间也使用该时区；JSONL 日期和 stdout 的 JSON 输出仍保持 UTC。
+
+收到信号时会明确记录正常停止；客户端在没有信号时意外返回则记录为错误，不会伪装成同步完成。
 
 日志包含授权状态、会话列表扫描、历史分页、编辑与删除核对、成功落盘的 JSONL
 变更及附件处理结果。归档进程每分钟报告一次已保存会话和消息数量，下载过程中

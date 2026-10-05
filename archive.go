@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -471,7 +470,7 @@ func (a *archive) upsert(records []Record, live bool, fence uint64) error {
 		if err := a.flush(peer); err != nil {
 			return err
 		}
-		log.Printf("JSONL saved: peer=%s added=%d updated=%d total=%d live=%t", peer, counts[0], counts[1], len(a.rows[peer]), live)
+		logPrintf("JSONL saved: peer=%s added=%d updated=%d total=%d live=%t", peer, counts[0], counts[1], len(a.rows[peer]), live)
 	}
 	return nil
 }
@@ -537,7 +536,7 @@ func (a *archive) remove(peer string, ids []int, live bool, fence uint64) error 
 			if err := a.flush(key); err != nil {
 				return err
 			}
-			log.Printf("JSONL deletion saved: peer=%s removed=%d total=%d live=%t", key, removed, len(rows), live)
+			logPrintf("JSONL deletion saved: peer=%s removed=%d total=%d live=%t", key, removed, len(rows), live)
 		}
 	}
 	return nil
@@ -566,7 +565,7 @@ func (a *archive) block(peer, reason string) error {
 			return err
 		}
 	}
-	log.Printf("Archive peer excluded: peer=%s removed=%d reason=%s", peer, removed, reason)
+	logPrintf("Archive peer excluded: peer=%s removed=%d reason=%s", peer, removed, reason)
 	return nil
 }
 

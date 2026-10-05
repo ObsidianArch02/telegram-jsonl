@@ -4,7 +4,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"log"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,11 +14,10 @@ import (
 
 func captureLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
-	previous, flags := log.Writer(), log.Flags()
+	previous := appLogger
 	var output bytes.Buffer
-	log.SetOutput(&output)
-	log.SetFlags(0)
-	t.Cleanup(func() { log.SetOutput(previous); log.SetFlags(flags) })
+	appLogger = newAppLogger(&output)
+	t.Cleanup(func() { appLogger = previous })
 	return &output
 }
 

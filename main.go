@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -24,6 +23,21 @@ import (
 )
 
 type terminalAuth struct{}
+
+var errUnexpectedArchiveStop = errors.New("archive client stopped without a signal or failure")
+
+func classifyArchiveExit(runErr, signalErr, failureErr error) (error, bool) {
+	if failureErr != nil {
+		return failureErr, false
+	}
+	if signalErr != nil {
+		return nil, true
+	}
+	if runErr == nil {
+		return errUnexpectedArchiveStop, false
+	}
+	return runErr, false
+}
 
 func readSecret(ctx context.Context, prompt string) (string, error) {
 	fd := int(os.Stdin.Fd())
@@ -154,7 +168,7 @@ func runArchive(args []string) error {
 	defer stop()
 	ctx, cancel := context.WithCancelCause(signalCtx)
 	defer cancel(nil)
-	log.Printf("Archive starting: client=%s data=%q interval=%s batch=%d sync_every=%s timezone=%s", cfg.Mode, *data, *interval, *batch, *every, time.Now().Format("MST -07:00"))
+	logPrintf("Archive starting: client=%s data=%q interval=%s batch=%d sync_every=%s timezone=%s", cfg.Mode, *data, *interval, *batch, *every, time.Now().Format("MST -07:00"))
 	fail := &failure{cancel: cancel}
 	store, err := openArchive(filepath.Join(*data, "archive"), fail)
 	if err != nil {
@@ -162,7 +176,7 @@ func runArchive(args []string) error {
 	}
 	defer store.Close()
 	peers, records := store.counts()
-	log.Printf("Loaded archive: peers=%d records=%d", peers, records)
+	logPrintf("Loaded archive: peers=%d records=%d", peers, records)
 	protocol, err := openProtocolStore(filepath.Join(*data, "state.sqlite"), fail)
 	if err != nil {
 		return err
@@ -175,7 +189,7 @@ func runArchive(args []string) error {
 	defer gate.Close()
 	r := &receiver{archive: store, protocol: protocol, batch: *batch, failure: fail, resync: make(chan struct{}, 1), historyPolicy: historyPolicy, reconcileWindow: reconcileWindow}
 	manager := updates.New(updates.Config{Handler: r.handler(), Storage: protocol, AccessHasher: protocol, OnChannelTooLong: func(id int64) {
-		log.Printf("Update gap for channel-%d; scheduling history reconciliation", id)
+		logPrintf("Update gap for channel-%d; scheduling history reconciliation", id)
 		select {
 		case r.resync <- struct{}{}:
 		default:
@@ -220,7 +234,7 @@ func runArchive(args []string) error {
 		}),
 		Device: telegram.DeviceConfig{DeviceModel: "Local JSONL archive", AppVersion: "0.1.0", SystemLangCode: "en", LangCode: "en"},
 	})
-	log.Print("Connecting to Telegram")
+	logPrint("Connecting to Telegram")
 	err = client.Run(ctx, func(ctx context.Context) error {
 		status, err := loginSource(ctx, client, cfg, *login, *loginMethod, tokens)
 		if err != nil {
@@ -231,7 +245,7 @@ func runArchive(args []string) error {
 		}
 		r.self = status.User.ID
 		r.api = client.API()
-		log.Printf("History backfill: %s; reconciliation window=%s", historyPolicy, *reconcileWindowText)
+		logPrintf("History backfill: %s; reconciliation window=%s", historyPolicy, *reconcileWindowText)
 		if err := store.bind(r.self); err != nil {
 			return err
 		}
@@ -255,7 +269,7 @@ func runArchive(args []string) error {
 					return gctx.Err()
 				case <-ticker.C:
 					peers, records := store.counts()
-					log.Printf("Archive status: stored_peers=%d records=%d", peers, records)
+					logPrintf("Archive status: stored_peers=%d records=%d", peers, records)
 				}
 			}
 		})
@@ -265,24 +279,19 @@ func runArchive(args []string) error {
 				return gctx.Err()
 			case <-ready:
 			}
-			log.Print("Live update receiver started; no read receipts sent")
+			logPrint("Live update receiver started; no read receipts sent")
 			return r.syncLoop(gctx, *every)
 		})
 		err = group.Wait()
 		enabled.Store(false)
 		return err
 	})
-	if err := fail.check(); err != nil {
-		return err
-	}
-	if signalCtx.Err() != nil && errors.Is(err, context.Canceled) {
-		log.Print("Archive stopped")
+	result, signaled := classifyArchiveExit(err, signalCtx.Err(), fail.check())
+	if signaled {
+		logPrint("Archive stopped by signal")
 		return nil
 	}
-	if err == nil {
-		log.Print("Archive synchronization finished")
-	}
-	return err
+	return result
 }
 
 func run() error {
@@ -307,13 +316,11 @@ func run() error {
 }
 
 func main() {
-	log.SetOutput(os.Stderr)
-	log.SetFlags(log.LstdFlags)
 	if err := run(); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return
 		}
-		log.Printf("Stopped: %v", err)
+		logErrorf("Stopped: %v", err)
 		os.Exit(1)
 	}
 }

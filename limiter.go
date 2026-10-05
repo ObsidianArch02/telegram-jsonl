@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -35,7 +34,7 @@ func openGate(path string, interval time.Duration, fail *failure) (*rpcGate, err
 		return nil, err
 	}
 	if time.Until(g.cooldown) > 0 {
-		log.Printf("Resuming saved FLOOD_WAIT; RPC calls paused until %s", g.cooldown.In(time.Local).Format(time.RFC3339))
+		logPrintf("Resuming saved FLOOD_WAIT; RPC calls paused until %s", g.cooldown.In(time.Local).Format(time.RFC3339))
 	}
 	return g, nil
 }
@@ -83,7 +82,7 @@ func (g *rpcGate) Handle(next tg.Invoker) telegram.InvokeFunc {
 			if err := g.store.WriteJSON("cooldown", g.cooldown); err != nil {
 				return g.failure.report(err)
 			}
-			log.Printf("Telegram requested FLOOD_WAIT; pausing RPC calls for %s until %s", delay+time.Second, g.cooldown.In(time.Local).Format(time.RFC3339))
+			logPrintf("Telegram requested FLOOD_WAIT; pausing RPC calls for %s until %s", delay+time.Second, g.cooldown.In(time.Local).Format(time.RFC3339))
 		}
 	}
 }

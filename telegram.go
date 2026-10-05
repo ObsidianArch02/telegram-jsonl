@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -332,7 +331,7 @@ func (r *receiver) discover(ctx context.Context) error {
 	// Explicitly enumerate both the main folder and Telegram's archived folder.
 	for _, folder := range []int{0, 1} {
 		count := 0
-		log.Printf("Discovering dialogs: folder=%d", folder)
+		logPrintf("Discovering dialogs: folder=%d", folder)
 		iter := dialogs.NewQueryBuilder(r.api).GetDialogs().FolderID(folder).BatchSize(r.batch).Iter()
 		for iter.Next(ctx) {
 			d := iter.Value()
@@ -372,13 +371,13 @@ func (r *receiver) discover(ctx context.Context) error {
 			}
 			count++
 			if count%r.batch == 0 {
-				log.Printf("Dialog discovery progress: folder=%d processed=%d", folder, count)
+				logPrintf("Dialog discovery progress: folder=%d processed=%d", folder, count)
 			}
 		}
 		if err := iter.Err(); err != nil {
 			return err
 		}
-		log.Printf("Dialog discovery complete: folder=%d processed=%d", folder, count)
+		logPrintf("Dialog discovery complete: folder=%d processed=%d", folder, count)
 	}
 	return nil
 }
@@ -393,7 +392,7 @@ func (r *receiver) reconcile(ctx context.Context, key string, p PeerInfo) error 
 	}
 	ids := job.IDs
 	if len(ids) > 0 {
-		log.Printf("Checking archived messages: peer=%s records=%d resumed_at=%d", key, len(ids), job.Position)
+		logPrintf("Checking archived messages: peer=%s records=%d resumed_at=%d", key, len(ids), job.Position)
 	}
 	for start := job.Position; start < len(ids); start += r.batch {
 		if r.archive.blocked(key) {
@@ -445,7 +444,7 @@ func (r *receiver) reconcile(ctx context.Context, key string, p PeerInfo) error 
 		if err := r.archive.saveJob(syncJobKey("reconcile", key), job); err != nil {
 			return err
 		}
-		log.Printf("Reconciliation progress: peer=%s checked=%d/%d missing=%d", key, end, len(ids), len(deleted))
+		logPrintf("Reconciliation progress: peer=%s checked=%d/%d missing=%d", key, end, len(ids), len(deleted))
 	}
 	return nil
 }
@@ -467,7 +466,7 @@ func (r *receiver) history(ctx context.Context, key string, p PeerInfo, incremen
 	if incremental {
 		mode = "catchup"
 	}
-	log.Printf("History scan started: peer=%s mode=%s offset=%d min_id=%d", key, mode, offset, minID)
+	logPrintf("History scan started: peer=%s mode=%s offset=%d min_id=%d", key, mode, offset, minID)
 	pages, scanned := job.Pages, 0
 	for {
 		if r.archive.blocked(key) {
@@ -504,7 +503,7 @@ func (r *receiver) history(ctx context.Context, key string, p PeerInfo, incremen
 		}
 		pages++
 		scanned += len(page)
-		log.Printf("History page processed: peer=%s mode=%s page=%d fetched=%d in_window=%d scanned=%d boundary=%t", key, mode, pages, len(page), len(eligible), scanned, reachedBoundary)
+		logPrintf("History page processed: peer=%s mode=%s page=%d fetched=%d in_window=%d scanned=%d boundary=%t", key, mode, pages, len(page), len(eligible), scanned, reachedBoundary)
 		next := 0
 		for _, m := range messages.GetMessages() {
 			id := m.GetID()
@@ -519,7 +518,7 @@ func (r *receiver) history(ctx context.Context, key string, p PeerInfo, incremen
 			}
 		}
 		if next == 0 || reachedBoundary {
-			log.Printf("History scan read complete: peer=%s mode=%s pages=%d scanned=%d newest_id=%d", key, mode, pages, scanned, newest)
+			logPrintf("History scan read complete: peer=%s mode=%s pages=%d scanned=%d newest_id=%d", key, mode, pages, scanned, newest)
 			job.Offset, job.Newest, job.Pages, job.Done = offset, newest, pages, true
 			return r.archive.commitHistoryJob(key, job, incremental)
 		}
@@ -574,7 +573,7 @@ func (r *receiver) verifyArchivedPeers(ctx context.Context) error {
 			continue
 		}
 		if verificationUnavailable(err) {
-			log.Printf("Archived peer verification unavailable: peer=%s reason=%v; leaving it active", key, err)
+			logPrintf("Archived peer verification unavailable: peer=%s reason=%v; leaving it active", key, err)
 			continue
 		}
 		return fmt.Errorf("verify archived peer %s: %w", key, err)
@@ -584,7 +583,7 @@ func (r *receiver) verifyArchivedPeers(ctx context.Context) error {
 
 func (r *receiver) sync(ctx context.Context) error {
 	started := time.Now()
-	log.Print("History and deletion reconciliation starting")
+	logPrint("History and deletion reconciliation starting")
 	cycle, resumed, err := r.loadCycle()
 	if err != nil {
 		return err
@@ -610,7 +609,7 @@ func (r *receiver) sync(ctx context.Context) error {
 	if err := r.verifyArchivedPeers(ctx); err != nil {
 		return err
 	}
-	log.Printf("Synchronization cycle: peers=%d phase=%s resumed=%t position=%d", len(cycle.Peers), cycle.Phase, resumed, cycle.Position)
+	logPrintf("Synchronization cycle: peers=%d phase=%s resumed=%t position=%d", len(cycle.Peers), cycle.Phase, resumed, cycle.Position)
 	policy, window := r.historyPolicy, r.reconcileWindow
 	r.historyPolicy = historyConfig{Disabled: cycle.HistoryDisabled}
 	if cycle.HistorySince > 0 {
@@ -659,7 +658,7 @@ func (r *receiver) sync(ctx context.Context) error {
 	if err := r.archive.finishCycle(cycle); err != nil {
 		return err
 	}
-	log.Printf("History and deletion reconciliation complete: peers=%d elapsed=%s", len(cycle.Peers), time.Since(started).Round(time.Millisecond))
+	logPrintf("History and deletion reconciliation complete: peers=%d elapsed=%s", len(cycle.Peers), time.Since(started).Round(time.Millisecond))
 	return nil
 }
 
@@ -668,7 +667,7 @@ func (r *receiver) syncLoop(ctx context.Context, every time.Duration) error {
 		if err := r.sync(ctx); err != nil {
 			return err
 		}
-		log.Printf("Waiting for updates; next reconciliation at %s", time.Now().Add(every).In(time.Local).Format(time.RFC3339))
+		logPrintf("Waiting for updates; next reconciliation at %s", time.Now().Add(every).In(time.Local).Format(time.RFC3339))
 		timer := time.NewTimer(every)
 		select {
 		case <-ctx.Done():
@@ -676,7 +675,7 @@ func (r *receiver) syncLoop(ctx context.Context, every time.Duration) error {
 			return ctx.Err()
 		case <-r.resync:
 			timer.Stop()
-			log.Print("Update gap triggered an early reconciliation")
+			logPrint("Update gap triggered an early reconciliation")
 		case <-timer.C:
 		}
 	}

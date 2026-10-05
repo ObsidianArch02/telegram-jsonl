@@ -52,9 +52,16 @@ jobs:
       - name: Test with the race detector (Unix)
         if: runner.os != 'Windows'
         run: go test -race -count=1 ./...
-      - name: Test without race detector (Windows)
+      - name: Compile test packages (Windows)
         if: runner.os == 'Windows'
-        run: go test -count=1 ./...
+        run: go test -run '^$' -count=1 ./...
+      - name: Run portable tests (Windows)
+        if: runner.os == 'Windows'
+        # modernc.org/sqlite currently returns SQLITE_NOMEM while opening
+        # file-backed databases on the hosted Windows runner. Keep compilation
+        # coverage here and run the SQLite suite on Unix until the upstream
+        # Windows VFS issue is resolved.
+        run: go test -count=1 ./internal/tdllogin ./scripts/homebrew
       - name: Vet
         run: go vet ./...
       - name: Build the standalone executable
